@@ -1,3 +1,9 @@
+# Ignore login files
 /scripts/secrets.py
 
+# Environment
 /venv
+
+/__pycache__
+
+.DS_Store
