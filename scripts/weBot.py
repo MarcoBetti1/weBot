@@ -67,6 +67,32 @@ class weBot:
         else:
             print("No posts found to scroll to.")
 
+    def fetch_post_data(self, post):
+        """Extract data from a single post"""
+        try:
+            username = post.find_element(By.CSS_SELECTOR, "div[data-testid='tweet'] div.css-1dbjc4n r-1wbh5a2 r-dnmrzs span").text
+            link = post.find_element(By.CSS_SELECTOR, "a").getAttribute("href")
+            tweet_text = post.find_element(By.CSS_SELECTOR, "div[data-testid='tweetText']").text
+            stats = post.find_elements(By.CSS_SELECTOR, "div[data-testid='like'] span, div[data-testid='retweet'] span, div[data-testid='reply'] span")
+
+            comments = int(stats[0].text) if stats[0].text.isdigit() else 0
+            retweets = int(stats[1].text) if stats[1].text.isdigit() else 0
+            likes = int(stats[2].text) if stats[2].text.isdigit() else 0
+            views = 0  # Views may need additional handling
+
+            return {
+                "username": username,
+                "link": link,
+                "tweet_text": tweet_text,
+                "comments": comments,
+                "retweets": retweets,
+                "likes": likes,
+                "views": views
+            }
+        except Exception as e:
+            print(f"Error extracting data from post: {e}")
+            return None
+
     def fetch_post(self):
         """Fetch data from the post currently in the center of the viewport"""
         try:
@@ -74,7 +100,7 @@ class weBot:
             if posts:
                 post = posts[0]
                 self.scroll()
-                post_data = self.fetch_post(post)
+                post_data = self.fetch_post_data(post)
                 print(post_data)
                 return post_data
             else:
@@ -134,6 +160,9 @@ if __name__ == "__main__":
     #bot.navigate(page_url) Automaitcally goes home after login
 
 
+    bot.scroll()
+    bot.scroll()
+    bot.scroll()
     bot.scroll()
     bot.fetch_post()
     bot.click()
