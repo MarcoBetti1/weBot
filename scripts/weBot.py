@@ -93,8 +93,6 @@ class weBot:
         self.driver.quit()
 
 if __name__ == "__main__":
-    # username = "your_username"
-    # password = "your_password"
     page_url = "https://twitter.com/explore/tabs/for-you"  # FYP Url
 
     scraper = weBot(username, password)
