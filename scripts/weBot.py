@@ -24,26 +24,6 @@ class weBot:
         self.positive_keywords = positive_keywords
         self.negative_keywords = negative_keywords
 
-
-    def calculate_post_score(self, post_data):
-        text = post_data['tweet_text'].lower()
-        score = 0
-
-        # Simple sentiment analysis
-        score += sum(5 for word in self.positive_keywords if word in text)
-        score -= sum(5 for word in self.negative_keywords if word in text)
-
-        # Consider engagement metrics
-        score += min(post_data['likes'] // 1000, 20)  # Max 20 points for likes
-        score += min(post_data['reposts'] // 500, 15)  # Max 15 points for retweets
-        score += min(post_data['replies'] // 100, 10)  # Max 10 points for replies
-
-        # Bonus for very high engagement
-        if post_data['likes'] > 50000 or post_data['reposts'] > 10000:
-            score += 20
-
-        return score
-
     def setup_driver(self):
         options = webdriver.ChromeOptions()
         #options.add_argument("--headless")  # Uncomment for headless mode, only works without this
@@ -105,8 +85,6 @@ class weBot:
                 if posts and self.current_post_index < len(posts):
                     target_post = posts[self.current_post_index]
                     self.driver.execute_script("arguments[0].scrollIntoView({block: 'center', behavior: 'smooth'});", target_post)
-                    time.sleep(1)  # Allow time for scrolling and loading
-                    self.random_delay()
                     self.current_post_index += 1
                     return
                     #print(f"Scrolled to post {self.current_post_index}")
@@ -131,18 +109,33 @@ class weBot:
 
     def _find_and_click_button(self, data_testid, aria_label_pattern=None):
         try:
+            # Find the centered post
+            centered_post = self.driver.execute_script("""
+                var posts = document.querySelectorAll("article[data-testid='tweet']");
+                var windowHeight = window.innerHeight;
+                var centerY = windowHeight / 2;
+                var closest = null;
+                var closestDistance = Infinity;
+                for (var i = 0; i < posts.length; i++) {
+                    var rect = posts[i].getBoundingClientRect();
+                    var distance = Math.abs(rect.top + rect.height / 2 - centerY);
+                    if (distance < closestDistance) {
+                        closest = posts[i];
+                        closestDistance = distance;
+                    }
+                }
+                return closest;
+            """)
+
+            if not centered_post:
+                print("No centered post found.")
+                return False
+
+            # Find the button within the centered post
             if aria_label_pattern:
-                button = WebDriverWait(self.driver, 10).until(
-                    EC.element_to_be_clickable((By.CSS_SELECTOR, f"button[data-testid='{data_testid}'][aria-label*='{aria_label_pattern}']"))
-                )
+                button = centered_post.find_element(By.CSS_SELECTOR, f"button[data-testid='{data_testid}'][aria-label*='{aria_label_pattern}']")
             else:
-                button = WebDriverWait(self.driver, 10).until(
-                    EC.element_to_be_clickable((By.CSS_SELECTOR, f"button[data-testid='{data_testid}']"))
-                )
-            
-            # Scroll the button into view
-            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", button)
-            self.random_delay(0.5, 1)  # Short delay after scrolling
+                button = centered_post.find_element(By.CSS_SELECTOR, f"button[data-testid='{data_testid}']")
 
             # Try to click using JavaScript
             try:
@@ -150,31 +143,28 @@ class weBot:
             except Exception:
                 # If JavaScript click fails, try regular click
                 ActionChains(self.driver).move_to_element(button).click().perform()
-
-            self.random_delay()  # Random delay after clicking
             return True
-        except (NoSuchElementException, TimeoutException, ElementClickInterceptedException) as e:
+        except (NoSuchElementException, ElementClickInterceptedException) as e:
             print(f"Error interacting with button (data-testid: '{data_testid}'): {e}")
             return False
 
     def save_post(self):
-        self.random_delay()
+        self.random_delay(0.1,0.2)
         return self._find_and_click_button("bookmark")
 
     def like(self):
-        self.random_delay()
+        self.random_delay(0.1,0.2)
         return self._find_and_click_button("like", "Likes. Like")
 
     def retweet(self):
-        self.random_delay()
+        self.random_delay(0.1,0.2)
         if self._find_and_click_button("retweet", "reposts. Repost"):
             try:
                 retweet_confirm = WebDriverWait(self.driver, 5).until(
                     EC.element_to_be_clickable((By.CSS_SELECTOR, "div[data-testid='retweetConfirm']"))
                 )
-                self.random_delay(0.5, 2)  # Shorter delay before confirming
+                self.random_delay(0.2, 0.4)  # Shorter delay before confirming
                 self.driver.execute_script("arguments[0].click();", retweet_confirm)
-                self.random_delay()
                 return True
             except (TimeoutException, ElementClickInterceptedException) as e:
                 print(f"Couldn't confirm retweet: {e}")
@@ -275,29 +265,6 @@ class weBot:
         except Exception as e:
             print(f"Error clicking on center post: {e}")
 
-    # def interact(self, action):
-    #     #Interact with the post currently in the center of the viewport
-    #     try:
-    #         posts = self.driver.find_elements(By.CSS_SELECTOR, "article")
-    #         if posts:
-    #             post = posts[0]
-    #             self.scroll()
-    #             if action == "like":
-    #                 like_button = post.find_element(By.CSS_SELECTOR, "div[data-testid='like']")
-    #                 like_button.click()
-    #                 time.sleep(1)
-    #                 print("Liked center post")
-    #             elif action == "retweet":
-    #                 retweet_button = post.find_element(By.CSS_SELECTOR, "div[data-testid='retweet']")
-    #                 retweet_button.click()
-    #                 time.sleep(1)
-    #                 print("Retweeted center post")
-    #             # Add more actions and make each a method
-    #         else:
-    #             print("No posts found in the center to interact with.")
-    #     except Exception as e:
-    #         print(f"Error interacting with center post: {e}")
-
     def quit(self):
         if self.driver:
             self.driver.quit()
@@ -305,7 +272,7 @@ class weBot:
     def to_home(self):
         self.random_delay()
         self.navigate(self.domain)
-        self.random_delay(3,8)
+        self.random_delay(2,4)
         # self.driver.execute_script("window.scrollTo(0, 0);")
 
     def create_post(self, text):

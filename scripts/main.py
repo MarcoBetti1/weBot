@@ -1,5 +1,6 @@
 from weBot import weBot
 from secrets import username,password
+from brains import process_posts
 def main():
     page_url = "https://twitter.com/home"  # Example URL
 
@@ -13,35 +14,15 @@ def main():
     # bot.scroll(1)
     # print(bot.fetch_post())
     # bot.scroll(3)
-    process_posts(bot,20)
+    for i in range(200):
+        process_posts(bot,6)
+        bot.to_home()
+        bot.to_home()
+        bot.random_delay(4,5)
 
     bot.quit()
 
-def interact_based_on_score(bot, score):
-        if score >= 70:  # Very high score
-            print(f"High score ({score}): Reposting, liking, and saving.")
-            bot.retweet()
-            bot.like()
-            bot.save_post()
-        elif score >= 50:  # Medium-high score
-            print(f"Medium-high score ({score}): Liking and saving.")
-            bot.like()
-            bot.save_post()
-        elif score >= 30:  # Medium score
-            print(f"Medium score ({score}): Liking.")
-            bot.like()
-        else:
-            print(f"Low score ({score}): No action taken.")
 
-def process_posts(bot, num_posts=10):
-        for _ in range(num_posts):
-            bot.scroll(1)
-            post_data = bot.fetch_post()
-            if post_data:
-                score = bot.calculate_post_score(post_data)
-                print(score)
-                interact_based_on_score(bot,score)
-            bot.random_delay(3, 7)
 
 if __name__ == "__main__":
     main()
