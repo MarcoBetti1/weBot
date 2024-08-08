@@ -10,19 +10,18 @@ from selenium.webdriver.common.action_chains import ActionChains
 import random
 import re
 import time
-from secrets import username,password
 from util import extract_engagement_stats
 
 
 class weBot:
-    def __init__(self, username, password, domain,positive_keywords,negative_keywords):
+    def __init__(self, username, password, loginDomain, homeDomain):
         self.username = username
         self.password = password
         self.driver = None
-        self.domain = domain
+        self.login_domain = loginDomain 
+        self.home_domain = homeDomain
         self.current_post_index = 0
-        self.positive_keywords = positive_keywords
-        self.negative_keywords = negative_keywords
+        self.posts = []
 
     def setup_driver(self):
         options = webdriver.ChromeOptions()
@@ -31,10 +30,16 @@ class weBot:
         options.add_argument("--disable-dev-shm-usage")
         self.driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
 
+    def sim_type(self,input,content): # simulate human typing
+        for char in content:
+            input.send_keys(char)
+            self.random_delay(0.05,0.2)
+        self.random_delay(0.05,0.2)
+
     def login(self):
         print("Navigating to login page...")
-        self.driver.get(self.domain)
-        time.sleep(2)
+        self.driver.get(self.login_domain)
+        self.random_delay(1,3)
 
         try:
             print("Finding username input field...")
@@ -44,26 +49,21 @@ class weBot:
             username_input = self.driver.find_element(By.NAME, "text")
 
             #username_input.send_keys(self.username)
-            for char in self.username:
-                username_input.send_keys(char)
-                self.random_delay(0.05, 0.2)
-            self.random_delay(0.05,0.2)
+            self.sim_type(username_input,self.username)
 
             username_input.send_keys(Keys.RETURN)
-            time.sleep(3)  # Wait for the password screen to load
+
+            self.random_delay(2,5)
 
             print("Finding password input field...")
             WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located((By.NAME, "password"))
             )
             password_input = self.driver.find_element(By.NAME, "password")
-            for char in self.password:
-                password_input.send_keys(char)
-                self.random_delay(0.05,0.2)
-            self.random_delay(0.05,0.2)
+            self.sim_type(password_input,self.password)
 
             password_input.send_keys(Keys.RETURN)
-            time.sleep(5)
+            self.random_delay(3,5)
             print("Logged in successfully.")
         except Exception as e:
             print(f"An error occurred: {e}")
@@ -75,34 +75,61 @@ class weBot:
         self.driver.get(page_url)
         time.sleep(3)
 
-    def scroll(self,n):
+    def update_post_list(self):
+        self.posts = WebDriverWait(self.driver, 10).until(
+            EC.presence_of_all_elements_located((By.CSS_SELECTOR, "article[data-testid='tweet']"))
+        )
+
+    def reset_scroll_index(self):
+        self.current_post_index = 0
+        self.update_post_list()
+
+    def get_centered_post(self):
+        return self.driver.execute_script("""
+            var posts = document.querySelectorAll("article[data-testid='tweet']");
+            var windowHeight = window.innerHeight;
+            var centerY = windowHeight / 2;
+            var closest = null;
+            var closestDistance = Infinity;
+            for (var i = 0; i < posts.length; i++) {
+                var rect = posts[i].getBoundingClientRect();
+                var distance = Math.abs(rect.top + rect.height / 2 - centerY);
+                if (distance < closestDistance) {
+                    closest = posts[i];
+                    closestDistance = distance;
+                }
+            }
+            return closest;
+        """)
+
+    def scroll(self):
         print("Scrolling to the next post...")
-        for i in range(n):
-            try:
-                posts = WebDriverWait(self.driver, 10).until(
-                    EC.presence_of_all_elements_located((By.CSS_SELECTOR, "article[data-testid='tweet']"))
-                )
-                if posts and self.current_post_index < len(posts):
-                    target_post = posts[self.current_post_index]
-                    self.driver.execute_script("arguments[0].scrollIntoView({block: 'center', behavior: 'smooth'});", target_post)
-                    self.current_post_index += 1
-                    return
-                    #print(f"Scrolled to post {self.current_post_index}")
+        try:
+            self.update_post_list()
+            if self.current_post_index < len(self.posts):
+                target_post = self.posts[self.current_post_index]
+                self.driver.execute_script("arguments[0].scrollIntoView({block: 'center', behavior: 'smooth'});", target_post)
+                self.current_post_index += 1
+                self.random_delay(1, 3)
+                return True
+            else:
+                print("No more posts to scroll to. Attempting to load more...")
+                self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                time.sleep(10)  # Wait for potential new posts to load
+                self.update_post_list()
+                if len(self.posts) > self.current_post_index:
+                    print("New posts loaded. Continuing from current index.")
+                    return self.scroll()
                 else:
-                    print("No more posts to scroll to. Attempting to load more...")
-                    self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-                    time.sleep(10)  # Wait for potential new posts to load
-                    new_posts = self.driver.find_elements(By.CSS_SELECTOR, "article[data-testid='tweet']")
-                    if len(new_posts) > len(posts):
-                        print("New posts loaded. Resetting scroll index.")
-                        self.current_post_index = len(posts)
-                    else:
-                        print("No new posts loaded. End of feed reached.")
-                        self.current_post_index = 0  # Reset to top if no new posts
-            except TimeoutException:
-                print("Timeout waiting for posts to load.")
-            except Exception as e:
-                print(f"Error during scrolling: {e}")
+                    print("No new posts loaded. End of feed reached.")
+                    self.current_post_index = 0  # Reset to top if no new posts
+                    return False
+        except TimeoutException:
+            print("Timeout waiting for posts to load.")
+            return False
+        except Exception as e:
+            print(f"Error during scrolling: {e}")
+            return False
 
     def random_delay(self, min_seconds=1, max_seconds=5):
             time.sleep(random.uniform(min_seconds, max_seconds))
@@ -110,22 +137,7 @@ class weBot:
     def _find_and_click_button(self, data_testid, aria_label_pattern=None):
         try:
             # Find the centered post
-            centered_post = self.driver.execute_script("""
-                var posts = document.querySelectorAll("article[data-testid='tweet']");
-                var windowHeight = window.innerHeight;
-                var centerY = windowHeight / 2;
-                var closest = null;
-                var closestDistance = Infinity;
-                for (var i = 0; i < posts.length; i++) {
-                    var rect = posts[i].getBoundingClientRect();
-                    var distance = Math.abs(rect.top + rect.height / 2 - centerY);
-                    if (distance < closestDistance) {
-                        closest = posts[i];
-                        closestDistance = distance;
-                    }
-                }
-                return closest;
-            """)
+            centered_post = self.get_centered_post()
 
             if not centered_post:
                 print("No centered post found.")
@@ -168,6 +180,70 @@ class weBot:
                 return False
         return False
 
+    def click(self):
+        # Click on the post currently in the center of the viewport to view its details and replies
+        try:
+            centered_post = self.get_centered_post()
+            if centered_post:
+                # Use JavaScript to click the post, as it's more reliable than Selenium's click
+                self.driver.execute_script("arguments[0].click();", centered_post)
+                print("Clicked on center post")
+            else:
+                print("No post found in the center to click.")
+        except Exception as e:
+            print(f"Error clicking on center post: {e}")
+
+    def go_back(self):
+        # Click the back button with specific attributes
+        try:
+            # Wait for the back button to be clickable
+            back_button = WebDriverWait(self.driver, 10).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "button[aria-label='Back'][data-testid='app-bar-back']"))
+            )
+            # Use JavaScript to click the button, as it's more reliable than Selenium's click
+            self.driver.execute_script("arguments[0].click();", back_button)
+            print("Clicked back button")
+            
+            # After going back, reset the scroll index and update the post list
+            self.reset_scroll_index()
+        except TimeoutException:
+            print("Back button not found or not clickable")
+            # Attempt to find the button and print more details for debugging
+            try:
+                button = self.driver.find_element(By.CSS_SELECTOR, "button[aria-label='Back']")
+                print(f"Button found but not clickable. Button text: {button.text}")
+                print(f"Button is displayed: {button.is_displayed()}")
+                print(f"Button is enabled: {button.is_enabled()}")
+            except NoSuchElementException:
+                print("Back button not found in the DOM")
+        except Exception as e:
+            print(f"Error clicking back button: {e}")
+
+    def create_post(self, text):
+        self.to_home()
+        try:
+            # Find and click on the post textarea
+            post_input = WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "div[data-testid='tweetTextarea_0']"))
+            )
+            post_input.click()
+
+            self.sim_type(post_input,text)
+
+            # Find and click the post button
+            post_button = WebDriverWait(self.driver, 10).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "button[data-testid='tweetButtonInline']"))
+            )
+            self.random_delay(1, 3)  # Wait for the post to be sent
+            post_button.click()
+
+
+            print("Post created successfully.")
+            return True
+        except Exception as e:
+            print(f"Error creating post: {e}")
+            return False
+
     def send_reply(self, text):
         try:
             if not self._find_and_click_button("reply", "Replies. Reply"):
@@ -176,20 +252,88 @@ class weBot:
             reply_input = WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, "div[data-testid='tweetTextarea_0']"))
             )
-            for char in text:
-                reply_input.send_keys(char)
-                self.random_delay(0.05, 0.2)  # Simulate human typing speed
+            self.sim_type(reply_input,text)
 
-            self.random_delay(0.5, 2)  # Short pause before sending
             reply_button = WebDriverWait(self.driver, 10).until(
                 EC.element_to_be_clickable((By.CSS_SELECTOR, "button[data-testid='tweetButton']"))
             )
+            self.random_delay(1, 3) 
             reply_button.click()
-            self.random_delay(1, 3)  # Wait for the reply to be sent
+            
 
             return True
         except Exception as e:
             print(f"Error sending reply: {e}")
+            return False
+
+    def follow(self): #WIP
+        try:
+            # Get the centered post
+            centered_post = self.get_centered_post()
+            if not centered_post:
+                print("No centered post found to follow author.")
+                return False
+
+            # Find the follow button within the centered post
+            follow_button = WebDriverWait(centered_post, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "div[aria-label^='Follow @']"))
+            )
+
+            # Extract the username from the aria-label
+            username = follow_button.get_attribute('aria-label').split('@')[1]
+
+            # Click the follow button using JavaScript
+            self.driver.execute_script("arguments[0].click();", follow_button)
+            
+            print(f"Followed @{username}")
+            return True
+
+        except TimeoutException:
+            print("Follow button not found or not clickable")
+            return False
+        except Exception as e:
+            print(f"Error following user: {e}")
+            return False
+
+    def unfollow(self):
+        try:
+            # Get the centered post
+            centered_post = self.get_centered_post()
+            if not centered_post:
+                print("No centered post found to unfollow author.")
+                return False
+
+            # Find the unfollow button within the centered post
+            unfollow_button = WebDriverWait(centered_post, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "div[aria-label^='Following @']"))
+            )
+
+            # Extract the username from the aria-label
+            username = unfollow_button.get_attribute('aria-label').split('@')[1]
+
+            # Click the unfollow button using JavaScript
+            self.driver.execute_script("arguments[0].click();", unfollow_button)
+            
+            # Confirm unfollow if a confirmation dialog appears
+            try:
+                confirm_unfollow = WebDriverWait(self.driver, 5).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, "div[data-testid='confirmationSheetConfirm']"))
+                )
+                self.random_delay(1, 2)  # Short delay after confirming
+                self.driver.execute_script("arguments[0].click();", confirm_unfollow)
+
+            except TimeoutException:
+                # No confirmation dialog appeared, which is fine
+                pass
+            
+            print(f"Unfollowed @{username}")
+            return True
+
+        except TimeoutException:
+            print("Unfollow button not found or not clickable")
+            return False
+        except Exception as e:
+            print(f"Error unfollowing user: {e}")
             return False
 
     def fetch_post_data(self, post):
@@ -226,75 +370,27 @@ class weBot:
             return None
 
     def fetch_post(self):
-            try:
-                WebDriverWait(self.driver, 10).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, "article[data-testid='tweet']"))
-                )
-                posts = self.driver.find_elements(By.CSS_SELECTOR, "article[data-testid='tweet']")
-                if posts and self.current_post_index > 0 and self.current_post_index <= len(posts):
-                    post = posts[self.current_post_index - 1]  # -1 because we've already incremented in scroll()
-                    post_data = self.fetch_post_data(post)
-                    #print(post_data)
-                    return post_data
-                else:
-                    print("No posts found at the current index.")
-                    return None
-            except TimeoutException:
-                print("Timeout waiting for posts to load in fetch_post.")
-                return None
-            except Exception as e:
-                print(f"Error fetching data from center post: {e}")
-                return None
-
-    def click(self):
-        #Click on the post currently in the center of the viewport to view its details and replies
         try:
-            posts = self.driver.find_elements(By.CSS_SELECTOR, "article")
-            if posts:
-                post = posts[0]
-                self.scroll(1)
-                post.click()
-                time.sleep(3)  # Wait for the post details to load
-                print("Clicked on center post")
+            centered_post = self.get_centered_post()
+            if centered_post:
+                post_data = self.fetch_post_data(centered_post)
+                return post_data
             else:
-                print("No posts found in the center to click.")
+                print("No centered post found.")
+                return None
+        except TimeoutException:
+            print("Timeout waiting for posts to load in fetch_post.")
+            return None
         except Exception as e:
-            print(f"Error clicking on center post: {e}")
+            print(f"Error fetching data from center post: {e}")
+            return None
+
+    def to_home(self):
+        self.navigate(self.home_domain)
+        self.random_delay(2,4)
+        self.reset_scroll_index()
+        # self.driver.execute_script("window.scrollTo(0, 0);")
 
     def quit(self):
         if self.driver:
             self.driver.quit()
-
-    def to_home(self):
-        self.random_delay()
-        self.navigate(self.domain)
-        self.random_delay(2,4)
-        # self.driver.execute_script("window.scrollTo(0, 0);")
-
-    def create_post(self, text):
-        self.to_home()
-        try:
-            # Find and click on the post textarea
-            post_input = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "div[data-testid='tweetTextarea_0']"))
-            )
-            post_input.click()
-
-            # Type the post text
-            for char in text:
-                post_input.send_keys(char)
-                self.random_delay(0.05, 0.2)
-            self.random_delay(0.5, 2)
-
-            # Find and click the post button
-            post_button = WebDriverWait(self.driver, 10).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, "button[data-testid='tweetButtonInline']"))
-            )
-            post_button.click()
-
-            self.random_delay(1, 3)  # Wait for the post to be sent
-            print("Post created successfully.")
-            return True
-        except Exception as e:
-            print(f"Error creating post: {e}")
-            return False
