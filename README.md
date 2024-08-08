@@ -16,5 +16,7 @@ project diagram [Here][project-flow] (in progress)
 - run the web bot, currently we have a main in weBot.py so we can just run that `python3 scripts/weBot.py`
 
 ### Current State:
-- Just learning selenium and other stuff so we currently have a bot with just username and password and it can navigate to the login screen and enter the fields.
-- Secrets.py can store the login info seperate from the code for the bot. Also we will remove the main class from that eventually.
+- Just learning selenium and other stuff 
+- Secrets.py can store the login info seperate from the code for the bot.
+- Main class calls some brains.py functions and passes the bot through
+- some simple behavior decisions are made in brains.py depending on length of text, engagement stats and some sentiment analasys
