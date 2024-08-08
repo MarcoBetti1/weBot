@@ -1,17 +1,26 @@
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 import time
+import random
 
 analyzer = SentimentIntensityAnalyzer()
+
+
+def random_delay(min_seconds=1, max_seconds=5):
+            time.sleep(random.uniform(min_seconds, max_seconds))
 
 def interact_based_on_score(bot, score):
     if score >= 70:  # Very high score
         print(f"High score ({score}): Reposting, liking, and saving.")
+        random_delay(0.1,0.4)
         bot.retweet()
+        random_delay(0.1,0.4)
         bot.like()
+        random_delay(0.1,0.4)
         bot.save_post()
     elif score >= 50:  # Medium-high score
         print(f"Medium-high score ({score}): Liking and saving.")
         bot.like()
+        random_delay(0.1,0.4)
         bot.save_post()
     elif score >= 30:  # Medium score
         print(f"Medium score ({score}): Liking.")
@@ -28,7 +37,7 @@ def process_posts(bot, num_posts=10):
             print(score)
             interact_based_on_score(bot, score)
 
-        bot.random_delay(3, 7)
+        random_delay(3, 7)
         time.sleep(7)
 
 def calculate_post_score(post_data):

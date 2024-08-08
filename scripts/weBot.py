@@ -149,15 +149,12 @@ class weBot:
             return False
 
     def save_post(self):
-        self.random_delay(0.1,0.2)
         return self._find_and_click_button("bookmark")
 
     def like(self):
-        self.random_delay(0.1,0.2)
         return self._find_and_click_button("like", "Likes. Like")
 
     def retweet(self):
-        self.random_delay(0.1,0.2)
         if self._find_and_click_button("retweet", "reposts. Repost"):
             try:
                 retweet_confirm = WebDriverWait(self.driver, 5).until(
@@ -172,7 +169,6 @@ class weBot:
         return False
 
     def send_reply(self, text):
-        self.random_delay()
         try:
             if not self._find_and_click_button("reply", "Replies. Reply"):
                 return False
