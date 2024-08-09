@@ -8,3 +8,9 @@
 /__pycache__
 
 .DS_Store
+
+cookies.pkl
+
+Dockerfile
+
+/profile

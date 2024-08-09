@@ -10,7 +10,6 @@ from selenium.webdriver.common.action_chains import ActionChains
 import random
 import re
 import time
-from util import extract_engagement_stats
 
 
 class weBot:
@@ -25,7 +24,7 @@ class weBot:
 
     def setup_driver(self):
         options = webdriver.ChromeOptions()
-        #options.add_argument("--headless")  # Uncomment for headless mode, only works without this
+        #options.add_argument("--headless")  
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         self.driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
@@ -109,15 +108,31 @@ class weBot:
             if self.current_post_index < len(self.posts):
                 target_post = self.posts[self.current_post_index]
                 self.driver.execute_script("arguments[0].scrollIntoView({block: 'center', behavior: 'smooth'});", target_post)
-                self.current_post_index += 1
-                self.random_delay(1, 3)
+                self.random_delay(0.8, 2.3)
+                
+                # Update the post list after scrolling
+                self.update_post_list()
+                
+                # Find the new position of the target post
+                new_post_index = next((i for i, post in enumerate(self.posts) if post == target_post), None)
+                
+                if new_post_index is not None:
+                    self.current_post_index = new_post_index + 1
+                else:
+                    # If the target post is not found (it might have been removed), just increment
+                    self.current_post_index += 1
+                
+                print(f"Scrolled to post {self.current_post_index}")
                 return True
             else:
                 print("No more posts to scroll to. Attempting to load more...")
+                last_height = self.driver.execute_script("return document.body.scrollHeight")
                 self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-                time.sleep(10)  # Wait for potential new posts to load
-                self.update_post_list()
-                if len(self.posts) > self.current_post_index:
+                self.random_delay(3, 5)
+                
+                new_height = self.driver.execute_script("return document.body.scrollHeight")
+                if new_height > last_height:
+                    self.update_post_list()
                     print("New posts loaded. Continuing from current index.")
                     return self.scroll()
                 else:
@@ -182,6 +197,7 @@ class weBot:
 
     def click(self):
         # Click on the post currently in the center of the viewport to view its details and replies
+        self.scroll() # So we arent focused on the post we clicked on
         try:
             centered_post = self.get_centered_post()
             if centered_post:
@@ -266,24 +282,20 @@ class weBot:
             print(f"Error sending reply: {e}")
             return False
 
-    def follow(self): #WIP
+    def follow(self):
         try:
-            # Get the centered post
-            centered_post = self.get_centered_post()
-            if not centered_post:
-                print("No centered post found to follow author.")
-                return False
-
-            # Find the follow button within the centered post
-            follow_button = WebDriverWait(centered_post, 10).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "div[aria-label^='Follow @']"))
+            # Find the follow button
+            follow_button = WebDriverWait(self.driver, 10).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "div[aria-label^='Follow @']"))
             )
-
+            
             # Extract the username from the aria-label
             username = follow_button.get_attribute('aria-label').split('@')[1]
-
+            
             # Click the follow button using JavaScript
             self.driver.execute_script("arguments[0].click();", follow_button)
+            
+            self.random_delay(1, 2)  # Short delay after clicking
             
             print(f"Followed @{username}")
             return True
@@ -297,34 +309,29 @@ class weBot:
 
     def unfollow(self):
         try:
-            # Get the centered post
-            centered_post = self.get_centered_post()
-            if not centered_post:
-                print("No centered post found to unfollow author.")
-                return False
-
-            # Find the unfollow button within the centered post
-            unfollow_button = WebDriverWait(centered_post, 10).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "div[aria-label^='Following @']"))
+            # Find the unfollow button
+            unfollow_button = WebDriverWait(self.driver, 10).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "div[aria-label^='Unfollow @']"))
             )
-
+            
             # Extract the username from the aria-label
             username = unfollow_button.get_attribute('aria-label').split('@')[1]
-
+            
             # Click the unfollow button using JavaScript
             self.driver.execute_script("arguments[0].click();", unfollow_button)
             
-            # Confirm unfollow if a confirmation dialog appears
+            self.random_delay(1, 2)  # Short delay after clicking
+            
+            # Confirm unfollow in the dialog that appears
             try:
                 confirm_unfollow = WebDriverWait(self.driver, 5).until(
-                    EC.element_to_be_clickable((By.CSS_SELECTOR, "div[data-testid='confirmationSheetConfirm']"))
+                    EC.element_to_be_clickable((By.XPATH, "//div[@role='menuitem']//span[contains(text(), 'Unfollow')]"))
                 )
-                self.random_delay(1, 2)  # Short delay after confirming
                 self.driver.execute_script("arguments[0].click();", confirm_unfollow)
-
+                self.random_delay(1, 2)  # Short delay after confirming
             except TimeoutException:
-                # No confirmation dialog appeared, which is fine
-                pass
+                print("Unfollow confirmation dialog not found")
+                return False
             
             print(f"Unfollowed @{username}")
             return True
