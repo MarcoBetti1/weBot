@@ -323,15 +323,15 @@ class weBot:
                 EC.presence_of_element_located((By.CSS_SELECTOR, "div[data-testid='primaryColumn']"))
             )
 
-            # Look for the follow button in the profile header
-            follow_button = WebDriverWait(self.driver, 10).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, "div[data-testid='placementTracking'] div[role='button'][data-testid='Follow']"))
-            )
-            
             # Extract the username from the profile page
             username_element = self.driver.find_element(By.CSS_SELECTOR, "div[data-testid='UserName'] span")
             username = username_element.text.split("@")[-1]
 
+            # Look for the follow button using a more specific selector
+            follow_button = WebDriverWait(self.driver, 10).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, f"button[aria-label^='Follow @{username}'][data-testid$='-follow']"))
+            )
+            
             # Scroll the button into view
             self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", follow_button)
             
@@ -346,10 +346,10 @@ class weBot:
             return True
 
         except TimeoutException:
-            print("Follow button not found or not clickable on the profile page")
+            print(f"Follow button not found or not clickable for @{username}")
             return False
         except Exception as e:
-            print(f"Error following user: {e}")
+            print(f"Error following @{username}: {e}")
             return False
 
     def unfollow(self):
@@ -359,15 +359,15 @@ class weBot:
                 EC.presence_of_element_located((By.CSS_SELECTOR, "div[data-testid='primaryColumn']"))
             )
 
-            # Look for the unfollow button in the profile header
-            unfollow_button = WebDriverWait(self.driver, 10).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, "div[data-testid='placementTracking'] div[role='button'][data-testid='unfollow']"))
-            )
-            
             # Extract the username from the profile page
             username_element = self.driver.find_element(By.CSS_SELECTOR, "div[data-testid='UserName'] span")
             username = username_element.text.split("@")[-1]
 
+            # Look for the unfollow button using a more specific selector
+            unfollow_button = WebDriverWait(self.driver, 10).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, f"button[aria-label^='Unfollow @{username}']"))
+            )
+            
             # Scroll the button into view
             self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", unfollow_button)
             
@@ -393,11 +393,44 @@ class weBot:
             return True
 
         except TimeoutException:
-            print("Unfollow button not found or not clickable on the profile page")
+            print(f"Unfollow button not found or not clickable for @{username}")
             return False
         except Exception as e:
-            print(f"Error unfollowing user: {e}")
+            print(f"Error unfollowing @{username}: {e}")
             return False
+    
+    def fetch_post_data(self, post):
+        try:
+            # Extract username
+            username = post.find_element(By.CSS_SELECTOR, "div[data-testid='User-Name'] span").text
+
+            # Extract tweet text
+            tweet_text = post.find_element(By.CSS_SELECTOR, "div[data-testid='tweetText']").text
+
+            # Extract post link
+            try:
+                time_element = post.find_element(By.CSS_SELECTOR, "time")
+                link = time_element.find_element(By.XPATH, "./..").get_attribute("href")
+            except NoSuchElementException:
+                link = None
+
+            # Extract all engagement stats from the container div
+            try:
+                engagement_container = post.find_element(By.CSS_SELECTOR, "div[role='group'][aria-label]")
+                engagement_label = engagement_container.get_attribute('aria-label')
+                engagement_stats = extract_engagement_stats(engagement_label)
+            except NoSuchElementException:
+                engagement_stats = {}
+
+            return {
+                "username": username,
+                "link": link,
+                "tweet_text": tweet_text,
+                **engagement_stats
+            }
+        except Exception as e:
+            print(f"Error extracting data from post: {e}")
+            return None
 
     def fetch_post(self):
         try:
