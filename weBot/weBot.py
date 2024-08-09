@@ -7,6 +7,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.common.exceptions import NoSuchElementException, TimeoutException, ElementClickInterceptedException
 from selenium.webdriver.common.action_chains import ActionChains
+from weBot.util import extract_engagement_stats
 import random
 import re
 import time
@@ -208,7 +209,40 @@ class weBot:
                 print("No post found in the center to click.")
         except Exception as e:
             print(f"Error clicking on center post: {e}")
+    
+    def click_author(self):
+        try:
+            # Find the centered post
+            centered_post = self.get_centered_post()
+            if not centered_post:
+                print("No centered post found.")
+                return False
 
+            # Find the author's username element within the centered post
+            username_element = WebDriverWait(centered_post, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "div[data-testid='User-Name'] a"))
+            )
+            
+            # Scroll the username into view
+            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", username_element)
+            
+            self.random_delay(0.5, 1)  # Short delay after scrolling
+            
+            # Click the username using JavaScript
+            self.driver.execute_script("arguments[0].click();", username_element)
+            
+            self.random_delay(2, 3)  # Wait for the profile page to load
+            
+            print(f"Clicked on author's username")
+            return True
+
+        except TimeoutException:
+            print("Author's username not found or not clickable")
+            return False
+        except Exception as e:
+            print(f"Error clicking author's username: {e}")
+            return False
+        
     def go_back(self):
         # Click the back button with specific attributes
         try:
@@ -284,13 +318,24 @@ class weBot:
 
     def follow(self):
         try:
-            # Find the follow button
+            # Wait for the profile page to load
+            WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "div[data-testid='primaryColumn']"))
+            )
+
+            # Look for the follow button in the profile header
             follow_button = WebDriverWait(self.driver, 10).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, "div[aria-label^='Follow @']"))
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "div[data-testid='placementTracking'] div[role='button'][data-testid='Follow']"))
             )
             
-            # Extract the username from the aria-label
-            username = follow_button.get_attribute('aria-label').split('@')[1]
+            # Extract the username from the profile page
+            username_element = self.driver.find_element(By.CSS_SELECTOR, "div[data-testid='UserName'] span")
+            username = username_element.text.split("@")[-1]
+
+            # Scroll the button into view
+            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", follow_button)
+            
+            self.random_delay(0.5, 1)  # Short delay after scrolling
             
             # Click the follow button using JavaScript
             self.driver.execute_script("arguments[0].click();", follow_button)
@@ -301,7 +346,7 @@ class weBot:
             return True
 
         except TimeoutException:
-            print("Follow button not found or not clickable")
+            print("Follow button not found or not clickable on the profile page")
             return False
         except Exception as e:
             print(f"Error following user: {e}")
@@ -309,13 +354,24 @@ class weBot:
 
     def unfollow(self):
         try:
-            # Find the unfollow button
+            # Wait for the profile page to load
+            WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "div[data-testid='primaryColumn']"))
+            )
+
+            # Look for the unfollow button in the profile header
             unfollow_button = WebDriverWait(self.driver, 10).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, "div[aria-label^='Unfollow @']"))
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "div[data-testid='placementTracking'] div[role='button'][data-testid='unfollow']"))
             )
             
-            # Extract the username from the aria-label
-            username = unfollow_button.get_attribute('aria-label').split('@')[1]
+            # Extract the username from the profile page
+            username_element = self.driver.find_element(By.CSS_SELECTOR, "div[data-testid='UserName'] span")
+            username = username_element.text.split("@")[-1]
+
+            # Scroll the button into view
+            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", unfollow_button)
+            
+            self.random_delay(0.5, 1)  # Short delay after scrolling
             
             # Click the unfollow button using JavaScript
             self.driver.execute_script("arguments[0].click();", unfollow_button)
@@ -325,7 +381,7 @@ class weBot:
             # Confirm unfollow in the dialog that appears
             try:
                 confirm_unfollow = WebDriverWait(self.driver, 5).until(
-                    EC.element_to_be_clickable((By.XPATH, "//div[@role='menuitem']//span[contains(text(), 'Unfollow')]"))
+                    EC.element_to_be_clickable((By.XPATH, "//div[@role='menuitem']//span[text()='Unfollow']"))
                 )
                 self.driver.execute_script("arguments[0].click();", confirm_unfollow)
                 self.random_delay(1, 2)  # Short delay after confirming
@@ -337,44 +393,11 @@ class weBot:
             return True
 
         except TimeoutException:
-            print("Unfollow button not found or not clickable")
+            print("Unfollow button not found or not clickable on the profile page")
             return False
         except Exception as e:
             print(f"Error unfollowing user: {e}")
             return False
-
-    def fetch_post_data(self, post):
-        try:
-            # Extract username
-            username = post.find_element(By.CSS_SELECTOR, "div[data-testid='User-Name'] span").text
-
-            # Extract tweet text
-            tweet_text = post.find_element(By.CSS_SELECTOR, "div[data-testid='tweetText']").text
-
-            # Extract post link
-            try:
-                time_element = post.find_element(By.CSS_SELECTOR, "time")
-                link = time_element.find_element(By.XPATH, "./..").get_attribute("href")
-            except NoSuchElementException:
-                link = None
-
-            # Extract all engagement stats from the container div
-            try:
-                engagement_container = post.find_element(By.CSS_SELECTOR, "div[role='group'][aria-label]")
-                engagement_label = engagement_container.get_attribute('aria-label')
-                engagement_stats = extract_engagement_stats(engagement_label)
-            except NoSuchElementException:
-                engagement_stats = {}
-
-            return {
-                "username": username,
-                "link": link,
-                "tweet_text": tweet_text,
-                **engagement_stats
-            }
-        except Exception as e:
-            print(f"Error extracting data from post: {e}")
-            return None
 
     def fetch_post(self):
         try:

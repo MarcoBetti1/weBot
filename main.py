@@ -3,7 +3,7 @@ from scripts.secrets import username,password
 from scripts.brains import process_posts
 import os
 def main():
-    page_url = "https://twitter.com/home"  # Example URL
+    page_url = "https://twitter.com"  # Example URL
     login_url = "https://twitter.com/login" 
     # positive_keywords = ['great', 'awesome', 'excellent', 'amazing', 'good', 'nice', 'love', 'best']
     # negative_keywords = ['bad', 'worst', 'terrible', 'awful', 'hate', 'dislike', 'poor']
@@ -17,7 +17,23 @@ def main():
     # Actions
     print(bot.fetch_post())
     bot.scroll()
-    bot.click()
+    bot.click_author()
+    #bot.navigate_to_profile("InternetH0F")
+    bot.follow()
+    # bot.like()
+    # bot.retweet()
+    # bot.save_post()
+    bot.scroll()
+    bot.like()
+    bot.retweet()
+    bot.save_post()
+    bot.follow()
+    post = bot.fetch_post()
+    print(post)
+
+    
+    #bot.click()
+    bot.random_delay(3,4)
     bot.follow()
     bot.go_back()
     # Quit
