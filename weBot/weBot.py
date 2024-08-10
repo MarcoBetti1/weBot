@@ -7,16 +7,17 @@ from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.common.exceptions import NoSuchElementException, TimeoutException, ElementClickInterceptedException
 from selenium.webdriver.common.action_chains import ActionChains
-from weBot.util import extract_engagement_stats
+from weBot.util import extract_engagement_stats, fetch_post_data
+import pickle
 import random
-import re
 import time
 
 
 class weBot:
-    def __init__(self, username, password, loginDomain, homeDomain):
+    def __init__(self, username, password, email, loginDomain, homeDomain):
         self.username = username
         self.password = password
+        self.email = email
         self.driver = None
         self.login_domain = loginDomain 
         self.home_domain = homeDomain
@@ -25,10 +26,39 @@ class weBot:
 
     def setup_driver(self):
         options = webdriver.ChromeOptions()
-        #options.add_argument("--headless")  
+    
+        # Set the window size
+        options.add_argument("--window-size=400,1080")  # Example resolution: 1280x800
+        
+        # Set the window position on the screen
+        options.add_argument("--window-position=0,100")  # Example position: x=100, y=100
+
+        # Other options
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-extensions")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--disable-notifications")
+        options.add_argument("--disable-infobars")
+        options.add_argument("--start-maximized")
+        options.add_argument("--disable-popup-blocking")
+
         self.driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+
+    def save_cookies(self, file_path="cookies.pkl"):
+        with open(file_path, "wb") as file:
+            pickle.dump(self.driver.get_cookies(), file)
+        print("Cookies saved.")
+
+    def load_cookies(self, file_path="cookies.pkl"):
+        try:
+            with open(file_path, "rb") as file:
+                cookies = pickle.load(file)
+                for cookie in cookies:
+                    self.driver.add_cookie(cookie)
+            print("Cookies loaded.")
+        except FileNotFoundError:
+            print("No cookies. Proceeding without loading cookies.")
 
     def sim_type(self,input,content): # simulate human typing
         for char in content:
@@ -39,32 +69,56 @@ class weBot:
     def login(self):
         print("Navigating to login page...")
         self.driver.get(self.login_domain)
-        self.random_delay(1,3)
+        self.load_cookies()
+
+        self.driver.get(self.login_domain)  # Refresh the page with cookies loaded
+        self.random_delay(1, 3)
+
+        if "login" not in self.driver.current_url:  # If already logged in
+            print("Logged in using saved cookies.")
+            return
 
         try:
+            # Step 1: Enter Username
             print("Finding username input field...")
             WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located((By.NAME, "text"))
             )
             username_input = self.driver.find_element(By.NAME, "text")
-
-            #username_input.send_keys(self.username)
-            self.sim_type(username_input,self.username)
-
+            self.sim_type(username_input, self.username)
             username_input.send_keys(Keys.RETURN)
+            self.random_delay(2, 5)
 
-            self.random_delay(2,5)
+            # Step 2: Detect Unusual Activity Prompt
+            try:
+                print("Checking for unusual activity prompt...")
+                WebDriverWait(self.driver, 10).until(
+                    EC.presence_of_element_located(
+                        (By.XPATH, "//label[contains(., 'Phone or email')]")
+                    )
+                )
+                print("Unusual activity detected. Entering email...")
+                challenge_input = self.driver.find_element(By.NAME, "text")
+                self.sim_type(challenge_input, self.email)
+                challenge_input.send_keys(Keys.RETURN)
+                self.random_delay(3, 5)
 
+            except TimeoutException:
+                print("No unusual activity prompt detected. Continuing login process...")
+
+            # Step 3: Enter Password
             print("Finding password input field...")
             WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located((By.NAME, "password"))
             )
             password_input = self.driver.find_element(By.NAME, "password")
-            self.sim_type(password_input,self.password)
-
+            self.sim_type(password_input, self.password)
             password_input.send_keys(Keys.RETURN)
-            self.random_delay(3,5)
+            self.random_delay(3, 5)
+
             print("Logged in successfully.")
+            self.save_cookies()  # Save cookies after successful login
+
         except Exception as e:
             print(f"An error occurred: {e}")
             print("Current URL:", self.driver.current_url)
@@ -182,19 +236,48 @@ class weBot:
     def like(self):
         return self._find_and_click_button("like", "Likes. Like")
 
-    def retweet(self):
+    def repost(self, quote=None):
         if self._find_and_click_button("retweet", "reposts. Repost"):
             try:
-                retweet_confirm = WebDriverWait(self.driver, 5).until(
-                    EC.element_to_be_clickable((By.CSS_SELECTOR, "div[data-testid='retweetConfirm']"))
-                )
-                self.random_delay(0.2, 0.4)  # Shorter delay before confirming
-                self.driver.execute_script("arguments[0].click();", retweet_confirm)
-                return True
+                if quote:
+                    # Click the "Quote" button
+                    quote_button = WebDriverWait(self.driver, 5).until(
+                        EC.element_to_be_clickable((By.XPATH, "//a[@href='/compose/post']"))
+                    )
+                    self.random_delay(0.2, 0.4)  # Short delay before clicking
+                    self.driver.execute_script("arguments[0].click();", quote_button)
+                    self.random_delay(2, 4)  # Wait for the quote input to load
+
+                    # Enter the quote text
+                    quote_input = WebDriverWait(self.driver, 10).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, "div[role='textbox']"))
+                    )
+                    self.sim_type(quote_input, quote)
+
+                    # Click the "Post" button to post the quote tweet
+                    tweet_button = WebDriverWait(self.driver, 10).until(
+                        EC.element_to_be_clickable((By.CSS_SELECTOR, "button[data-testid='tweetButton']"))
+                    )
+                    self.driver.execute_script("arguments[0].click();", tweet_button)
+                    print("Quote tweet posted successfully.")
+                    return True
+
+                else:
+                    # Confirm normal repost
+                    retweet_confirm = WebDriverWait(self.driver, 5).until(
+                        EC.element_to_be_clickable((By.CSS_SELECTOR, "div[data-testid='retweetConfirm']"))
+                    )
+                    self.random_delay(0.2, 0.4)  # Shorter delay before confirming
+                    self.driver.execute_script("arguments[0].click();", retweet_confirm)
+                    print("Repost confirmed successfully.")
+                    return True
+
             except (TimeoutException, ElementClickInterceptedException) as e:
-                print(f"Couldn't confirm retweet: {e}")
+                print(f"Couldn't complete the repost action: {e}")
                 return False
+
         return False
+
 
     def click(self):
         # Click on the post currently in the center of the viewport to view its details and replies
@@ -399,44 +482,11 @@ class weBot:
             print(f"Error unfollowing @{username}: {e}")
             return False
     
-    def fetch_post_data(self, post):
-        try:
-            # Extract username
-            username = post.find_element(By.CSS_SELECTOR, "div[data-testid='User-Name'] span").text
-
-            # Extract tweet text
-            tweet_text = post.find_element(By.CSS_SELECTOR, "div[data-testid='tweetText']").text
-
-            # Extract post link
-            try:
-                time_element = post.find_element(By.CSS_SELECTOR, "time")
-                link = time_element.find_element(By.XPATH, "./..").get_attribute("href")
-            except NoSuchElementException:
-                link = None
-
-            # Extract all engagement stats from the container div
-            try:
-                engagement_container = post.find_element(By.CSS_SELECTOR, "div[role='group'][aria-label]")
-                engagement_label = engagement_container.get_attribute('aria-label')
-                engagement_stats = extract_engagement_stats(engagement_label)
-            except NoSuchElementException:
-                engagement_stats = {}
-
-            return {
-                "username": username,
-                "link": link,
-                "tweet_text": tweet_text,
-                **engagement_stats
-            }
-        except Exception as e:
-            print(f"Error extracting data from post: {e}")
-            return None
-
     def fetch_post(self):
         try:
             centered_post = self.get_centered_post()
             if centered_post:
-                post_data = self.fetch_post_data(centered_post)
+                post_data = fetch_post_data(centered_post)
                 return post_data
             else:
                 print("No centered post found.")

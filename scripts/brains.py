@@ -49,7 +49,7 @@ def get_random_comment():
 def interact_based_on_score(bot, score):
     actions = {
         'like': bot.like,
-        'retweet': bot.retweet,
+        'retweet': bot.repost,
         'save': bot.save_post,
         'comment': lambda: bot.send_reply(get_random_comment())
     }
@@ -100,6 +100,7 @@ def process_posts(bot, num_posts=10):
         post_data = bot.fetch_post()
         if post_data:
             score = calculate_post_score(post_data)
+            print(f"Post: {post_data}")
             print(f"Calculated score: {score}")
             interact_based_on_score(bot, score)
 
