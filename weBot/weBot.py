@@ -12,7 +12,6 @@ import pickle
 import random
 import time
 
-
 class weBot:
     def __init__(self, username, password, email, loginDomain, homeDomain):
         self.username = username
@@ -278,7 +277,6 @@ class weBot:
 
         return False
 
-
     def click(self):
         # Click on the post currently in the center of the viewport to view its details and replies
         self.scroll() # So we arent focused on the post we clicked on
@@ -482,6 +480,123 @@ class weBot:
             print(f"Error unfollowing @{username}: {e}")
             return False
     
+    def search(self, query):
+        try:
+            # Step 1: Click the "Search and explore" button
+            search_button = WebDriverWait(self.driver, 10).until(
+                EC.element_to_be_clickable((By.XPATH, "//a[@aria-label='Search and explore']"))
+            )
+            self.driver.execute_script("arguments[0].click();", search_button)
+            self.random_delay(2, 4)
+
+            # Step 2: Wait for the search bar to appear
+            search_input = WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "input[data-testid='SearchBox_Search_Input']"))
+            )
+
+            # Step 3: Type the search query
+            self.sim_type(search_input, query)
+            self.random_delay(0.5, 1)
+
+            # Step 4: Press "Enter" to execute the search
+            search_input.send_keys(Keys.RETURN)
+            print(f"Search executed for query: {query}")
+            self.random_delay(2, 4)
+
+        except (TimeoutException, ElementClickInterceptedException) as e:
+            print(f"Couldn't complete the search action: {e}")
+            return False
+
+        return True
+
+    def type_search(self, query, search_type="People"):
+        # Perform the search
+        if not self.search(query):
+            return False
+
+        # Determine the appropriate tab to click based on search_type
+        type_mapping = {
+            "Top": "//a[@href='/search?q={}&src=typed_query']",
+            "Latest": "//a[contains(@href,'&f=live')]",
+            "People": "//a[contains(@href,'&f=user')]",
+            "Media": "//a[contains(@href,'&f=media')]",
+            "Lists": "//a[contains(@href,'&f=lists')]"
+        }
+
+        # Format the XPath with the query if needed
+        type_xpath = type_mapping.get(search_type, type_mapping["Top"]).format(query)
+
+        try:
+            # Click the appropriate search type tab
+            search_type_tab = WebDriverWait(self.driver, 10).until(
+                EC.element_to_be_clickable((By.XPATH, type_xpath))
+            )
+            self.driver.execute_script("arguments[0].click();", search_type_tab)
+            print(f"Selected search type: {search_type}")
+            self.random_delay(2, 4)
+
+        except (TimeoutException, ElementClickInterceptedException) as e:
+            print(f"Couldn't select search type {search_type}: {e}")
+            return False
+
+        return True
+
+    def type_search_click(self, query, numresult=1, search_type="People"):
+        # Perform the search and select the type
+        if not self.type_search(query, search_type):
+            return False
+
+        try:
+            # Initialize counters and state
+            current_result = 0
+            result_found = False
+            item_xpath = ""
+
+            # Determine the XPath based on the search type
+            if search_type == "People":
+                item_xpath = "//button[@data-testid='UserCell']"
+            elif search_type == "Latest":
+                item_xpath = "//article[@role='article']"
+
+            while not result_found:
+                try:
+                    # Identify all visible items (UserCell or Article)
+                    items = self.driver.find_elements(By.XPATH, item_xpath)
+                    
+                    if len(items) == 0:
+                        print("No items found. Retrying...")
+                        self.driver.execute_script("window.scrollBy(0, 100);")  # Scroll slightly to load more
+                        self.random_delay(1, 2)
+                        continue
+
+                    # Loop through the visible items
+                    for item in items:
+                        current_result += 1
+                        if current_result == numresult:
+                            # Scroll the specific item into view and click it
+                            self.driver.execute_script("arguments[0].scrollIntoView(true);", item)
+                            self.random_delay(0.5, 1)
+                            self.driver.execute_script("arguments[0].click();", item)
+                            print(f"Clicked on result number {numresult} for search '{query}' in '{search_type}'")
+                            result_found = True
+                            self.random_delay(2, 4)
+                            break
+
+                    if not result_found:
+                        # Scroll down to load more results
+                        self.driver.execute_script("window.scrollBy(0, 300);")  # Scroll slightly to load more
+                        self.random_delay(1, 2)
+
+                except Exception as e:
+                    print(f"Couldn't select search result number {numresult} for {search_type}: {e}")
+                    return False
+
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            return False
+
+        return True
+
     def fetch_post(self):
         try:
             centered_post = self.get_centered_post()

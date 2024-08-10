@@ -17,6 +17,8 @@ def main():
     # Actions
     print(bot.fetch_post())
     #process_posts(bot,10)
+    bot.type_search_click(query="hello!",numresult=3,search_type="People")
+    bot.type_search_click(query="no",numresult=3,search_type="Latest") # only works for people and latest
     bot.scroll()
     bot.repost("Hi")
     bot.scroll()
