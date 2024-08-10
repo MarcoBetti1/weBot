@@ -13,16 +13,22 @@ def main():
 
 
     bot.login()
-
+    bot.navigate("https://x.com/InternetH0F")
+    bot.follow()
+    bot.unfollow()
     # Actions
-    print(bot.fetch_post())
+    #print(bot.fetch_post())
     #process_posts(bot,10)
-    bot.type_search_click(query="hello!",numresult=3,search_type="People")
-    bot.type_search_click(query="no",numresult=3,search_type="Latest") # only works for people and latest
-    bot.scroll()
-    bot.repost("Hi")
-    bot.scroll()
-    bot.repost()
+    bot.type_search_click(query="eggsalad",numresult=1,search_type="People")
+    bot.follow()
+    bot.random_delay(1,2)
+    bot.unfollow()
+    bot.quit()
+    # bot.type_search_click(query="no",numresult=3,search_type="Latest") # only works for people and latest
+    # bot.scroll()
+    # bot.repost("Hi")
+    # bot.scroll()
+    # bot.repost()
     # #bot.navigate_to_profile("InternetH0F")
     # bot.follow()
     # # bot.like()

@@ -404,13 +404,9 @@ class weBot:
                 EC.presence_of_element_located((By.CSS_SELECTOR, "div[data-testid='primaryColumn']"))
             )
 
-            # Extract the username from the profile page
-            username_element = self.driver.find_element(By.CSS_SELECTOR, "div[data-testid='UserName'] span")
-            username = username_element.text.split("@")[-1]
-
-            # Look for the follow button using a more specific selector
+            # Look for the follow button using a more general selector
             follow_button = WebDriverWait(self.driver, 10).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, f"button[aria-label^='Follow @{username}'][data-testid$='-follow']"))
+                EC.element_to_be_clickable((By.XPATH, "//button[@data-testid][contains(@aria-label, 'Follow')]"))
             )
             
             # Scroll the button into view
@@ -423,14 +419,14 @@ class weBot:
             
             self.random_delay(1, 2)  # Short delay after clicking
             
-            print(f"Followed @{username}")
+            print(f"Followed the user.")
             return True
 
         except TimeoutException:
-            print(f"Follow button not found or not clickable for @{username}")
+            print("Follow button not found or not clickable.")
             return False
         except Exception as e:
-            print(f"Error following @{username}: {e}")
+            print(f"Error following user: {e}")
             return False
 
     def unfollow(self):
@@ -440,46 +436,67 @@ class weBot:
                 EC.presence_of_element_located((By.CSS_SELECTOR, "div[data-testid='primaryColumn']"))
             )
 
-            # Extract the username from the profile page
-            username_element = self.driver.find_element(By.CSS_SELECTOR, "div[data-testid='UserName'] span")
-            username = username_element.text.split("@")[-1]
-
-            # Look for the unfollow button using a more specific selector
-            unfollow_button = WebDriverWait(self.driver, 10).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, f"button[aria-label^='Unfollow @{username}']"))
-            )
-            
-            # Scroll the button into view
-            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", unfollow_button)
-            
-            self.random_delay(0.5, 1)  # Short delay after scrolling
-            
-            # Click the unfollow button using JavaScript
-            self.driver.execute_script("arguments[0].click();", unfollow_button)
-            
-            self.random_delay(1, 2)  # Short delay after clicking
-            
-            # Confirm unfollow in the dialog that appears
+            # Check if the account is subscribable by looking for the "Subscribe to" button
             try:
-                confirm_unfollow = WebDriverWait(self.driver, 5).until(
-                    EC.element_to_be_clickable((By.XPATH, "//div[@role='menuitem']//span[text()='Unfollow']"))
-                )
-                self.driver.execute_script("arguments[0].click();", confirm_unfollow)
-                self.random_delay(1, 2)  # Short delay after confirming
-            except TimeoutException:
-                print("Unfollow confirmation dialog not found")
-                return False
-            
-            print(f"Unfollowed @{username}")
-            return True
+                subscribe_button = self.driver.find_element(By.XPATH, "//button[contains(@aria-label, 'Subscribe to')]")
+                is_subscribable = True
+                print("Account is subscribable.")
+            except NoSuchElementException:
+                is_subscribable = False
+                print("Account is not subscribable.")
+
+            if is_subscribable:
+                # Unfollow logic for subscribable accounts
+                try:
+                    unfollow_button = WebDriverWait(self.driver, 10).until(
+                        EC.element_to_be_clickable((By.XPATH, "//button[contains(@aria-label, 'Unfollow')]"))
+                    )
+                    self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", unfollow_button)
+                    self.random_delay(0.5, 1)
+                    self.driver.execute_script("arguments[0].click();", unfollow_button)
+                    self.random_delay(1, 2)
+
+                    # Confirm unfollow in the dropdown menu
+                    confirm_unfollow_dropdown = WebDriverWait(self.driver, 5).until(
+                        EC.element_to_be_clickable((By.XPATH, "//div[@role='menuitem']//span[contains(text(), 'Unfollow')]"))
+                    )
+                    self.driver.execute_script("arguments[0].click();", confirm_unfollow_dropdown)
+                    self.random_delay(1, 2)
+                    print("Unfollowed the subscribable account.")
+                    return True
+                except Exception as e:
+                    print(f"Error unfollowing subscribable account: {e}")
+                    return False
+            else:
+                # Unfollow logic for regular accounts
+                try:
+                    unfollow_button = WebDriverWait(self.driver, 10).until(
+                        EC.element_to_be_clickable((By.XPATH, "//button[contains(@aria-label, 'Following')]"))
+                    )
+                    self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", unfollow_button)
+                    self.random_delay(0.5, 1)
+                    self.driver.execute_script("arguments[0].click();", unfollow_button)
+                    self.random_delay(1, 2)
+
+                    # Confirm unfollow in the full-screen confirmation dialog
+                    confirm_unfollow = WebDriverWait(self.driver, 5).until(
+                        EC.element_to_be_clickable((By.XPATH, "//button[@data-testid='confirmationSheetConfirm']"))
+                    )
+                    self.driver.execute_script("arguments[0].click();", confirm_unfollow)
+                    self.random_delay(1, 2)
+                    print("Unfollowed the regular account.")
+                    return True
+                except Exception as e:
+                    print(f"Error unfollowing regular account: {e}")
+                    return False
 
         except TimeoutException:
-            print(f"Unfollow button not found or not clickable for @{username}")
+            print("Unfollow button not found or not clickable.")
             return False
         except Exception as e:
-            print(f"Error unfollowing @{username}: {e}")
+            print(f"Error in unfollowing logic: {e}")
             return False
-    
+
     def search(self, query):
         try:
             # Step 1: Click the "Search and explore" button
