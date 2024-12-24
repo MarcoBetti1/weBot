@@ -1,6 +1,7 @@
 from weBot.weBot import weBot
 from scripts.secrets import username,password,email
 from scripts.brains import process_posts
+from scripts.search_scripts import simple_handle_search_and_save
 import os
 def main():
     page_url = "https://twitter.com"  # Example URL
@@ -13,16 +14,26 @@ def main():
 
 
     bot.login()
-    bot.navigate("https://x.com/InternetH0F")
-    bot.follow()
-    bot.unfollow()
+    bot.navigate("https://x.com/moorehn/followers")
+    test = bot.get_user_list_from_modal()
+    print(test)
+    # bot.like()
+    # bot.save_post()
+    # bot.follow()
+    # bot.create_post("Happy Holidays")
+    # simple_handle_search_and_save(bot,"elonmusk")
+    #bot.navigate("https://x.com/moorehn")
+    #bot.get_user_profile_data()
+    #bot.follow()
+    #bot.unfollow()
     # Actions
     #print(bot.fetch_post())
     #process_posts(bot,10)
-    bot.type_search_click(query="eggsalad",numresult=1,search_type="People")
-    bot.follow()
-    bot.random_delay(1,2)
-    bot.unfollow()
+
+    #bot.search(query="eggsalad")
+    #bot.follow()
+    #bot.random_delay(1,2)
+    #bot.unfollow()
     bot.quit()
     # bot.type_search_click(query="no",numresult=3,search_type="Latest") # only works for people and latest
     # bot.scroll()
@@ -34,11 +45,7 @@ def main():
     # # bot.like()
     # # bot.retweet()
     # # bot.save_post()
-    # bot.scroll()
-    # bot.like()
-    # bot.retweet()
-    # bot.save_post()
-    # bot.follow()
+    
     # post = bot.fetch_post()
     # print(post)
 

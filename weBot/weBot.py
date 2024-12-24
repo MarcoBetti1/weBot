@@ -65,18 +65,24 @@ class weBot:
             self.random_delay(0.05,0.2)
         self.random_delay(0.05,0.2)
 
-    def login(self):
+    def login(self,method="creds"):
         print("Navigating to login page...")
         self.driver.get(self.login_domain)
         self.load_cookies()
 
         self.driver.get(self.login_domain)  # Refresh the page with cookies loaded
-        self.random_delay(1, 3)
+        self.random_delay(0.1, 0.9)
 
         if "login" not in self.driver.current_url:  # If already logged in
             print("Logged in using saved cookies.")
             return
+        
+        if method =="creds":
+            self.login_df()
+        # if method =="ggl":
+        #     self.login_ggl() # login through google, unimplemented for now
 
+    def login_df(self): # Log in by username and password
         try:
             # Step 1: Enter Username
             print("Finding username input field...")
@@ -582,6 +588,7 @@ class weBot:
                     
                     if len(items) == 0:
                         print("No items found. Retrying...")
+                    
                         self.driver.execute_script("window.scrollBy(0, 100);")  # Scroll slightly to load more
                         self.random_delay(1, 2)
                         continue
@@ -635,6 +642,166 @@ class weBot:
         self.random_delay(2,4)
         self.reset_scroll_index()
         # self.driver.execute_script("window.scrollTo(0, 0);")
+
+    def get_user_profile_data(self, descriptive=False):
+        try:
+            # Wait until the page loads and a relevant element is present
+            WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "div[data-testid='UserName']"))
+            )
+            
+            # Extract the display name (username)
+            try:
+                display_name_el = self.driver.find_element(By.CSS_SELECTOR, "div[data-testid='UserName']")
+                display_name = display_name_el.text.split("\n")[0]
+            except NoSuchElementException:
+                display_name = ""
+
+            # Extract handle from the URL of the current page
+            handle = self.driver.current_url.split("/")[-1]
+            
+            # Extract bio
+            try:
+                bio_el = self.driver.find_element(By.CSS_SELECTOR, "div[data-testid='UserDescription']")
+                bio = bio_el.text
+            except NoSuchElementException:
+                bio = ""
+            
+            # Extract followers and following counts
+            try:    
+                followers_el = self.driver.find_element(By.CSS_SELECTOR, "a[href$='/verified_followers'] > span > span")
+                followers_count = followers_el.text
+            except NoSuchElementException:
+                followers_count = "0"
+
+            try:
+                following_el = self.driver.find_element(By.CSS_SELECTOR, "a[href$='/following'] > span > span")
+                following_count = following_el.text
+            except NoSuchElementException:
+                following_count = "0"
+            
+            if not descipritve:
+                return {
+                "display_name": display_name,
+                "handle": handle,
+                "bio": bio,
+                "followers_count": followers_count,
+                "following_count": following_count
+            }
+            else:
+                follower_list = []
+                following_list = []
+                try:
+                    link_selector = "a[href$='/verified_followers']"
+                    modal_link = WebDriverWait(self.driver, 10).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, link_selector))
+                    )
+                    self.driver.execute_script("arguments[0].click();", modal_link)
+                    
+                    self.random_delay(1, 3)  # Wait for modal to open
+                    follower_list = self.get_user_list_from_modal()
+                    # call script to iterate through followers and get handles
+                    # append
+                except NoSuchElementException:
+                    follower_list.append("err")
+                    print("error in discpritive follower list")
+                try:
+                    # call script to iterate through following and get handles
+                    link_selector = "a[href$='/following']"
+                    modal_link = WebDriverWait(self.driver, 10).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, link_selector))
+                    )
+                    self.driver.execute_script("arguments[0].click();", modal_link)
+                    
+                    self.random_delay(2, 4)  # Wait for modal to open
+
+                except NoSuchElementException:
+                    #following_list = "err"
+                    print("error in discpritive following list")
+
+                
+                return {
+                "display_name": display_name,
+                "handle": handle,
+                "bio": bio,
+                "followers_count": followers_count,
+                "following_count": following_count,
+                "followers_list": followers_list,
+                "following_list": following_list,
+
+            }
+            #print(f"display_name: {display_name}, handle: {handle}, bio: {bio}, followers_count: {followers_count}, following_count: {following_count}")
+            
+        except Exception as e:
+            print(f"Error getting user profile data: {e}")
+            return None
+
+    def get_user_list_from_modal(self, list_type="followers", max_count=None):
+        """
+        Scrape all user handles from the 'followers' or 'following' modal.
+        Scrolls incrementally to ensure all followers are captured.
+        """
+        try:
+            # Define the selectors
+            modal_selector = "div[aria-label*='Timeline:']"  # Matches 'Timeline: Followers' or 'Timeline: Following'
+            user_cell_selector = "div[data-testid='cellInnerDiv']"
+            handle_link_selector = "a[href^='/']"
+            
+            # Wait for the modal to appear
+            WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, modal_selector))
+            )
+            
+            # Get the scrollable modal container
+            modal_container = self.driver.find_element(By.CSS_SELECTOR, modal_selector)
+            
+            # Initialize storage for unique handles
+            seen_handles = set()
+            last_seen_count = 0
+
+            while True:
+                # Find all user cells in the modal
+                user_cells = modal_container.find_elements(By.CSS_SELECTOR, user_cell_selector)
+                
+                for cell in user_cells:
+                    try:
+                        # Ensure this cell represents a real follower with a button
+                        if cell.find_element(By.CSS_SELECTOR, "button[data-testid='UserCell']"):
+                            # Extract the handle
+                            link = cell.find_element(By.CSS_SELECTOR, handle_link_selector)
+                            href = link.get_attribute("href")
+                            if href:
+                                handle = href.split("/")[-1]
+                                if handle and handle not in seen_handles:
+                                    seen_handles.add(handle)
+                                    print(f"Found follower handle: {handle}")
+                                    if max_count and len(seen_handles) >= max_count:
+                                        print(f"Reached max_count of {max_count} {list_type}.")
+                                        return list(seen_handles)
+                    except NoSuchElementException:
+                        # Skip if required elements are missing
+                        continue
+                
+                # Scroll the modal container slightly
+                print("poop")
+                self.driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight;", modal_container)
+                self.random_delay(1, 2)
+                print("test")
+                
+                # Check if new elements are loaded
+                current_seen_count = len(user_cells)
+                if current_seen_count == last_seen_count:
+                    # No new elements detected, end scrolling
+                    print(f"No new {list_type} found. Ending scroll.")
+                    break
+                last_seen_count = current_seen_count
+            return list(seen_handles)
+        
+        except Exception as e:
+            print(f"Error retrieving user list ({list_type}): {e}")
+            return []
+
+
 
     def quit(self):
         if self.driver:
