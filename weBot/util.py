@@ -1,7 +1,7 @@
 import re
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import NoSuchElementException, TimeoutException, ElementClickInterceptedException
-
+import json
 def extract_engagement_stats(label):
     stats = {}
     pattern = r'(\d+(?:,\d+)*)\s+(\w+)'
@@ -43,29 +43,8 @@ def fetch_post_data(post):
             print(f"Error extracting data from post: {e}")
             return None
 
-def simple_handle_search_and_save(bot, handle):
-    # 1. Go to user page
-    bot.navigate(f"https://twitter.com/{handle}")
+def save(name,data):
+    with open(f"{name}.json", "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
     
-    # 2. Extract user data
-    user_profile_data = bot.get_user_profile_data()
-    
-    # 3. Extract posts from timeline (maybe limit to first 10 for example)
-    user_posts = []
-    for i in range(10):
-        post_data = bot.fetch_post()
-        if post_data:
-            user_posts.append(post_data)
-        success = bot.scroll()
-        if not success:
-            break
-    
-    # 4. Save to JSON
-    result_data = {
-        "profile": user_profile_data,
-        "posts": user_posts,
-    }
-    with open(f"{handle}.json", "w", encoding="utf-8") as f:
-        json.dump(result_data, f, ensure_ascii=False, indent=2)
-    
-    print(f"Data for {handle} saved to {handle}.json.")
+    print(f"Data for {name} saved to {name}.json.")

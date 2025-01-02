@@ -71,7 +71,7 @@ class weBot:
         self.load_cookies()
 
         self.driver.get(self.login_domain)  # Refresh the page with cookies loaded
-        self.random_delay(0.1, 0.9)
+        self.wait()
 
         if "login" not in self.driver.current_url:  # If already logged in
             print("Logged in using saved cookies.")
@@ -92,7 +92,7 @@ class weBot:
             username_input = self.driver.find_element(By.NAME, "text")
             self.sim_type(username_input, self.username)
             username_input.send_keys(Keys.RETURN)
-            self.random_delay(2, 5)
+            self.wait()
 
             # Step 2: Detect Unusual Activity Prompt
             try:
@@ -106,7 +106,7 @@ class weBot:
                 challenge_input = self.driver.find_element(By.NAME, "text")
                 self.sim_type(challenge_input, self.email)
                 challenge_input.send_keys(Keys.RETURN)
-                self.random_delay(3, 5)
+                self.wait()
 
             except TimeoutException:
                 print("No unusual activity prompt detected. Continuing login process...")
@@ -132,7 +132,7 @@ class weBot:
     def navigate(self, page_url):
         print(f"Navigating to {page_url}...")
         self.driver.get(page_url)
-        time.sleep(3)
+        self.random_delay(1.5,2.5)
 
     def update_post_list(self):
         self.posts = WebDriverWait(self.driver, 10).until(
@@ -168,7 +168,7 @@ class weBot:
             if self.current_post_index < len(self.posts):
                 target_post = self.posts[self.current_post_index]
                 self.driver.execute_script("arguments[0].scrollIntoView({block: 'center', behavior: 'smooth'});", target_post)
-                self.random_delay(0.8, 2.3)
+                self.wait()
                 
                 # Update the post list after scrolling
                 self.update_post_list()
@@ -188,7 +188,7 @@ class weBot:
                 print("No more posts to scroll to. Attempting to load more...")
                 last_height = self.driver.execute_script("return document.body.scrollHeight")
                 self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-                self.random_delay(3, 5)
+                self.wait()
                 
                 new_height = self.driver.execute_script("return document.body.scrollHeight")
                 if new_height > last_height:
@@ -207,7 +207,10 @@ class weBot:
             return False
 
     def random_delay(self, min_seconds=1, max_seconds=5):
-            time.sleep(random.uniform(min_seconds, max_seconds))
+        time.sleep(random.uniform(min_seconds, max_seconds))
+
+    def wait(self):
+        self.random_delay(0.07,0.25)
 
     def _find_and_click_button(self, data_testid, aria_label_pattern=None):
         try:
@@ -249,9 +252,9 @@ class weBot:
                     quote_button = WebDriverWait(self.driver, 5).until(
                         EC.element_to_be_clickable((By.XPATH, "//a[@href='/compose/post']"))
                     )
-                    self.random_delay(0.2, 0.4)  # Short delay before clicking
+                    self.wait()
                     self.driver.execute_script("arguments[0].click();", quote_button)
-                    self.random_delay(2, 4)  # Wait for the quote input to load
+                    self.random_delay(1, 2)  # Wait for the quote input to load
 
                     # Enter the quote text
                     quote_input = WebDriverWait(self.driver, 10).until(
@@ -272,7 +275,7 @@ class weBot:
                     retweet_confirm = WebDriverWait(self.driver, 5).until(
                         EC.element_to_be_clickable((By.CSS_SELECTOR, "div[data-testid='retweetConfirm']"))
                     )
-                    self.random_delay(0.2, 0.4)  # Shorter delay before confirming
+                    self.wait()
                     self.driver.execute_script("arguments[0].click();", retweet_confirm)
                     print("Repost confirmed successfully.")
                     return True
@@ -313,12 +316,12 @@ class weBot:
             # Scroll the username into view
             self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", username_element)
             
-            self.random_delay(0.5, 1)  # Short delay after scrolling
+            self.wait()
             
             # Click the username using JavaScript
             self.driver.execute_script("arguments[0].click();", username_element)
             
-            self.random_delay(2, 3)  # Wait for the profile page to load
+            self.random_delay(0.9, 2)  # Wait for the profile page to load
             
             print(f"Clicked on author's username")
             return True
@@ -371,7 +374,7 @@ class weBot:
             post_button = WebDriverWait(self.driver, 10).until(
                 EC.element_to_be_clickable((By.CSS_SELECTOR, "button[data-testid='tweetButtonInline']"))
             )
-            self.random_delay(1, 3)  # Wait for the post to be sent
+            self.wait()
             post_button.click()
 
 
@@ -394,7 +397,7 @@ class weBot:
             reply_button = WebDriverWait(self.driver, 10).until(
                 EC.element_to_be_clickable((By.CSS_SELECTOR, "button[data-testid='tweetButton']"))
             )
-            self.random_delay(1, 3) 
+            self.wait()
             reply_button.click()
             
 
@@ -418,14 +421,14 @@ class weBot:
             # Scroll the button into view
             self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", follow_button)
             
-            self.random_delay(0.5, 1)  # Short delay after scrolling
+            self.wait()
             
             # Click the follow button using JavaScript
             self.driver.execute_script("arguments[0].click();", follow_button)
             
-            self.random_delay(1, 2)  # Short delay after clicking
-            
-            print(f"Followed the user.")
+            self.wait()
+            print(f"Followed")
+
             return True
 
         except TimeoutException:
@@ -458,16 +461,16 @@ class weBot:
                         EC.element_to_be_clickable((By.XPATH, "//button[contains(@aria-label, 'Unfollow')]"))
                     )
                     self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", unfollow_button)
-                    self.random_delay(0.5, 1)
+                    self.wait()
                     self.driver.execute_script("arguments[0].click();", unfollow_button)
-                    self.random_delay(1, 2)
+                    self.wait()
 
                     # Confirm unfollow in the dropdown menu
                     confirm_unfollow_dropdown = WebDriverWait(self.driver, 5).until(
                         EC.element_to_be_clickable((By.XPATH, "//div[@role='menuitem']//span[contains(text(), 'Unfollow')]"))
                     )
                     self.driver.execute_script("arguments[0].click();", confirm_unfollow_dropdown)
-                    self.random_delay(1, 2)
+                    self.wait()
                     print("Unfollowed the subscribable account.")
                     return True
                 except Exception as e:
@@ -480,16 +483,16 @@ class weBot:
                         EC.element_to_be_clickable((By.XPATH, "//button[contains(@aria-label, 'Following')]"))
                     )
                     self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", unfollow_button)
-                    self.random_delay(0.5, 1)
+                    self.wait()
                     self.driver.execute_script("arguments[0].click();", unfollow_button)
-                    self.random_delay(1, 2)
+                    self.wait()
 
                     # Confirm unfollow in the full-screen confirmation dialog
                     confirm_unfollow = WebDriverWait(self.driver, 5).until(
                         EC.element_to_be_clickable((By.XPATH, "//button[@data-testid='confirmationSheetConfirm']"))
                     )
                     self.driver.execute_script("arguments[0].click();", confirm_unfollow)
-                    self.random_delay(1, 2)
+                    self.wait()
                     print("Unfollowed the regular account.")
                     return True
                 except Exception as e:
@@ -510,7 +513,7 @@ class weBot:
                 EC.element_to_be_clickable((By.XPATH, "//a[@aria-label='Search and explore']"))
             )
             self.driver.execute_script("arguments[0].click();", search_button)
-            self.random_delay(2, 4)
+            self.wait()
 
             # Step 2: Wait for the search bar to appear
             search_input = WebDriverWait(self.driver, 10).until(
@@ -519,12 +522,12 @@ class weBot:
 
             # Step 3: Type the search query
             self.sim_type(search_input, query)
-            self.random_delay(0.5, 1)
+            self.wait()
 
             # Step 4: Press "Enter" to execute the search
             search_input.send_keys(Keys.RETURN)
             print(f"Search executed for query: {query}")
-            self.random_delay(2, 4)
+            self.wait()
 
         except (TimeoutException, ElementClickInterceptedException) as e:
             print(f"Couldn't complete the search action: {e}")
@@ -556,7 +559,7 @@ class weBot:
             )
             self.driver.execute_script("arguments[0].click();", search_type_tab)
             print(f"Selected search type: {search_type}")
-            self.random_delay(2, 4)
+            self.wait()
 
         except (TimeoutException, ElementClickInterceptedException) as e:
             print(f"Couldn't select search type {search_type}: {e}")
@@ -590,7 +593,7 @@ class weBot:
                         print("No items found. Retrying...")
                     
                         self.driver.execute_script("window.scrollBy(0, 100);")  # Scroll slightly to load more
-                        self.random_delay(1, 2)
+                        self.wait()
                         continue
 
                     # Loop through the visible items
@@ -599,17 +602,17 @@ class weBot:
                         if current_result == numresult:
                             # Scroll the specific item into view and click it
                             self.driver.execute_script("arguments[0].scrollIntoView(true);", item)
-                            self.random_delay(0.5, 1)
+                            self.wait()
                             self.driver.execute_script("arguments[0].click();", item)
                             print(f"Clicked on result number {numresult} for search '{query}' in '{search_type}'")
                             result_found = True
-                            self.random_delay(2, 4)
+                            self.wait()
                             break
 
                     if not result_found:
                         # Scroll down to load more results
                         self.driver.execute_script("window.scrollBy(0, 300);")  # Scroll slightly to load more
-                        self.random_delay(1, 2)
+                        self.wait()
 
                 except Exception as e:
                     print(f"Couldn't select search result number {numresult} for {search_type}: {e}")
@@ -639,13 +642,14 @@ class weBot:
 
     def to_home(self):
         self.navigate(self.home_domain)
-        self.random_delay(2,4)
+        self.wait()
         self.reset_scroll_index()
         # self.driver.execute_script("window.scrollTo(0, 0);")
 
-    def get_user_profile_data(self, descriptive=False):
+    def get_user_profile_data(self, handle, descriptive):
         try:
             # Wait until the page loads and a relevant element is present
+            self.navigate(f"https://twitter.com/{handle}")
             WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, "div[data-testid='UserName']"))
             )
@@ -680,7 +684,7 @@ class weBot:
             except NoSuchElementException:
                 following_count = "0"
             
-            if not descipritve:
+            if not descriptive:
                 return {
                 "display_name": display_name,
                 "handle": handle,
@@ -692,31 +696,24 @@ class weBot:
                 follower_list = []
                 following_list = []
                 try:
-                    link_selector = "a[href$='/verified_followers']"
-                    modal_link = WebDriverWait(self.driver, 10).until(
-                    EC.element_to_be_clickable((By.CSS_SELECTOR, link_selector))
-                    )
-                    self.driver.execute_script("arguments[0].click();", modal_link)
+                    self.navigate(f"https://x.com/{handle}/followers")
                     
-                    self.random_delay(1, 3)  # Wait for modal to open
-                    follower_list = self.get_user_list_from_modal()
-                    # call script to iterate through followers and get handles
-                    # append
+                    self.wait()
+                    follower_list = self.get_user_list_from_modal(list_type="followers")
+                    
                 except NoSuchElementException:
                     follower_list.append("err")
                     print("error in discpritive follower list")
                 try:
                     # call script to iterate through following and get handles
-                    link_selector = "a[href$='/following']"
-                    modal_link = WebDriverWait(self.driver, 10).until(
-                    EC.element_to_be_clickable((By.CSS_SELECTOR, link_selector))
-                    )
-                    self.driver.execute_script("arguments[0].click();", modal_link)
+                    self.navigate(f"https://x.com/{handle}/following")
                     
-                    self.random_delay(2, 4)  # Wait for modal to open
+                    self.wait()
+
+                    following_list = self.get_user_list_from_modal(list_type="following")
 
                 except NoSuchElementException:
-                    #following_list = "err"
+                    following_list.append("@err")
                     print("error in discpritive following list")
 
                 
@@ -726,7 +723,7 @@ class weBot:
                 "bio": bio,
                 "followers_count": followers_count,
                 "following_count": following_count,
-                "followers_list": followers_list,
+                "followers_list": follower_list,
                 "following_list": following_list,
 
             }
@@ -738,36 +735,31 @@ class weBot:
 
     def get_user_list_from_modal(self, list_type="followers", max_count=None):
         """
-        Scrape all user handles from the 'followers' or 'following' modal.
-        Scrolls incrementally to ensure all followers are captured.
+        Scrape all user handles from the 'followers' or 'following' modal by scrolling incrementally.
         """
+        fullyexplored = False
         try:
-            # Define the selectors
-            modal_selector = "div[aria-label*='Timeline:']"  # Matches 'Timeline: Followers' or 'Timeline: Following'
+            # Selectors
             user_cell_selector = "div[data-testid='cellInnerDiv']"
             handle_link_selector = "a[href^='/']"
             
-            # Wait for the modal to appear
+            # Wait for the followers modal content to load
             WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, modal_selector))
+                EC.presence_of_element_located((By.CSS_SELECTOR, user_cell_selector))
             )
-            
-            # Get the scrollable modal container
-            modal_container = self.driver.find_element(By.CSS_SELECTOR, modal_selector)
             
             # Initialize storage for unique handles
             seen_handles = set()
             last_seen_count = 0
-
+            
             while True:
-                # Find all user cells in the modal
-                user_cells = modal_container.find_elements(By.CSS_SELECTOR, user_cell_selector)
+                # Capture all user cells currently visible
+                user_cells = self.driver.find_elements(By.CSS_SELECTOR, user_cell_selector)
                 
                 for cell in user_cells:
                     try:
-                        # Ensure this cell represents a real follower with a button
+                        # Ensure this cell has a "UserCell" button and extract the handle
                         if cell.find_element(By.CSS_SELECTOR, "button[data-testid='UserCell']"):
-                            # Extract the handle
                             link = cell.find_element(By.CSS_SELECTOR, handle_link_selector)
                             href = link.get_attribute("href")
                             if href:
@@ -776,17 +768,14 @@ class weBot:
                                     seen_handles.add(handle)
                                     print(f"Found follower handle: {handle}")
                                     if max_count and len(seen_handles) >= max_count:
-                                        print(f"Reached max_count of {max_count} {list_type}.")
-                                        return list(seen_handles)
+                                        fullyexplored = True
+                                        return list(seen_handles), fullyexplored
                     except NoSuchElementException:
-                        # Skip if required elements are missing
                         continue
                 
-                # Scroll the modal container slightly
-                print("poop")
-                self.driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight;", modal_container)
+                # Scroll incrementally
+                self.driver.execute_script("document.documentElement.scrollTop += 500;")
                 self.random_delay(1, 2)
-                print("test")
                 
                 # Check if new elements are loaded
                 current_seen_count = len(user_cells)
@@ -795,13 +784,24 @@ class weBot:
                     print(f"No new {list_type} found. Ending scroll.")
                     break
                 last_seen_count = current_seen_count
-            return list(seen_handles)
+            
+            return list(seen_handles), fullyexplored
         
         except Exception as e:
             print(f"Error retrieving user list ({list_type}): {e}")
-            return []
+            return [], False
 
 
+    # def findScrollable(self):
+    #     elements = self.driver.find_elements(By.CSS_SELECTOR, "*")
+    #     for elem in elements:
+    #         try:
+    #             scroll_height = self.driver.execute_script("return arguments[0].scrollHeight;", elem)
+    #             client_height = self.driver.execute_script("return arguments[0].clientHeight;", elem)
+    #             if scroll_height > client_height:
+    #                 print(f"Scrollable element found: {elem.get_attribute('outerHTML')[:200]}")
+    #         except Exception:
+    #             continue
 
     def quit(self):
         if self.driver:
