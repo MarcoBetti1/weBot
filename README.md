@@ -1,3 +1,5 @@
+probably doesnt work now, used to in 2024. Also against TOS (never deployed). leaving some scraps here.
+
 ## weBot
 Trying to make a bot to speed up the process of achieving dead internet. Thats half a joke, but the goal is to make a bot that is able to interact with social media like a human. **Eventually** We will aim to make the bot have a mind of its own for its interactions. For now lets aim to give it arms and legs by making it able to read and interact, even though all interactions may be meaningless for now.
 
