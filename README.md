@@ -1,24 +1,83 @@
-probably doesnt work now, used to in 2024. Also against TOS (never deployed). leaving some scraps here.
+## weBot (2025 refresh) untested
 
-## weBot
-Trying to make a bot to speed up the process of achieving dead internet. Thats half a joke, but the goal is to make a bot that is able to interact with social media like a human. **Eventually** We will aim to make the bot have a mind of its own for its interactions. For now lets aim to give it arms and legs by making it able to read and interact, even though all interactions may be meaningless for now.
+This repository hosts an experimental Selenium automation harness for Twitter/X.
+The 2025 refresh focuses on observability and deterministic workflows so the
+bot always knows which page state it is operating in.  It now ships with a
+state-driven action layer, testable “brains”, and high-level workflows for
+login, timeline engagement, profile scraping, and follower graph crawling.
 
-project diagram [Here][project-flow] (in progress)
+⚠️ **Twitter automation may violate the platform’s Terms of Service.  Use at
+your own risk and only against accounts you own or have explicit permission
+to experiment with.**
 
-[project-flow]: https://whimsical.com/twit-HuoT4XtuHXGRRmjCkhyQyz
+## Project layout
 
+```
+weBot/
+    core/          # Driver factory, state models, page recognisers, Selenium actions
+    workflows/     # Composable workflows (login, profile fetch, follower graph)
+    brains/        # Decision-making logic (scoring, interaction policy)
+    data/          # Extractors and persistence helpers
+    config/        # Environment loading and examples
+bot.py           # High-level BotController orchestrating the pieces above
+```
 
+Legacy modules under `scripts/` and `weBot/util.py` now intentionally raise
+`ImportError`. Update existing projects to import from the packages above.
 
-### To run:
-- copy the repository or the contents of it. Easiest to make a new branch and initialize it locally
-- Make VENV. This is not necessary, but important to control libraries to avoid conflicts. In your directory, type `python -m venv path/to/venv` I typically store it in venv and use python 3 so for me it would be `python3 -m venv venv`. (you may need to isntall virtualenv with pip before)
-    - Start Venv on mac: `source venv/bin/activate` or the correct path to "activate"
-    - Start Venv on windows: idek how to do it on windows, it should be pretty easy. Just typing the path to the activate script should work
-- Install required dependancies. Requirements.txt will indicate all required dependancies, and they can all be installed at once with `pip install -r requirements.txt` (assuming your in this folder)
-- run the web bot, currently we have a main in weBot.py so we can just run that `python3 scripts/weBot.py`
+## Quick start
 
-### Current State:
-- Just learning selenium and other stuff 
-- Secrets.py can store the login info seperate from the code for the bot.
-- Main class calls some brains.py functions and passes the bot through
-- some simple behavior decisions are made in brains.py depending on length of text, engagement stats and some sentiment analasys
+1. **Create and activate a virtual environment** (Python 3.10+ recommended).
+     ```bash
+     python3 -m venv .venv
+     source .venv/bin/activate
+     ```
+
+2. **Install dependencies.**
+     ```bash
+     pip install -r requirements.txt
+     ```
+
+3. **Provide credentials** in a `.env` file (never commit this!). Supply any
+   identifiers you have—username, email, or phone—and the bot will cycle
+   through them when the login form resets.
+     ```env
+     WEBOT_USERNAME=your_username
+     WEBOT_PASSWORD=your_password
+     WEBOT_EMAIL=optional_email_used_for_challenges
+    WEBOT_PHONE=optional_phone_number
+     ```
+
+4. **Run a task via the CLI.**
+     ```bash
+    python -m main login
+     python -m main engage --posts 5
+     python -m main follower-graph --handle jack --layers 2 --output jack_graph.csv
+     python -m main profile --handle jack --output jack_profile.json --descriptive
+     ```
+
+    The browser launches in non-headless mode by default. Use `--headless` for
+    CI or `--login-order username,email,phone` to override the identifier
+    rotation. Add `--no-cookies` to force a fresh credential login.
+
+## Key improvements
+
+- **State awareness:** The bot continuously classifies the current page into a
+    `PageState` enum before executing any action, avoiding mismatched clicks.
+- **Composable actions:** Low-level interactions (login steps, scrolling,
+    liking, follower harvesting) live in dedicated modules that can be imported
+    and tested individually.
+- **Workflow engine:** Workflows (login, follower graph crawl, etc.) are driven
+    by a finite-state engine that retries deterministically and bubbles up
+    actionable errors.
+- **Brains rework:** Sentiment scoring and rate limiting are pure functions, so
+    you can unit-test the engagement logic without Selenium.
+- **Environment hygiene:** Credentials are loaded via `.env`/environment
+    variables and persisted cookies move to `cookies.json`. The old
+    compatibility modules now raise errors so callers migrate to the new API.
+
+## Next steps
+
+- Test if this shit works
+    - Shit dont work, ip block or something. Login with google or apple.
+- Make em think its human

@@ -1,3 +1,13 @@
-username = "Vega_3053"
-password = "kumsif-2kuzpi-ciKvum"
-email = "jacks912912@gmail.com"
+"""Legacy ``scripts.secrets`` placeholder.
+
+Use ``weBot.config.settings.load_credentials`` directly; this module no longer
+exposes credential values.
+"""
+
+from __future__ import annotations
+
+
+raise ImportError(
+	"The 'scripts.secrets' module has been removed. Call"
+	" weBot.config.settings.load_credentials() in your own code."
+)

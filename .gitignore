@@ -1,16 +1,19 @@
 # Ignore login files
 
 # Environment
-/venv
-
-/scripts/__pycache__
-
-/__pycache__
+venv/
 
 .DS_Store
 
 cookies.pkl
+cookies.json
+.env
+*.env
 
 Dockerfile
 
-/profile
+profile/
+
+.venv/
+
+*/__pycache__/
