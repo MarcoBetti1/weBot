@@ -43,6 +43,21 @@ def _handle_login_submitting(driver: WebDriver, context: SessionContext) -> Acti
     return ActionResult(False, PageState.UNKNOWN, message="Login submission timeout", metadata=metadata)
 
 
+def _handle_login_error(driver: WebDriver, context: SessionContext) -> ActionResult:
+    snapshot = recognize_state(driver)
+    message = snapshot.metadata.get("message") if snapshot else None
+    metadata = {"last_identifier": context.attributes.get("last_login_identifier")}
+    if message:
+        metadata["message"] = message
+
+    identifiers = context.login_identifiers or []
+    if identifiers and context.login_cycle == 0:
+        # Try next identifier on first cycle
+        return ActionResult(True, PageState.LOGIN_USERNAME, metadata=metadata)
+
+    return ActionResult(False, PageState.UNKNOWN, message=message or "Login failed", metadata=metadata)
+
+
 def _handle_unknown(driver: WebDriver, context: SessionContext) -> ActionResult:
     # Attempt to navigate back to login URL as a recovery step
     navigation.navigate_to(driver, context, context.login_url)
@@ -55,6 +70,7 @@ def build_login_workflow(driver: WebDriver, context: SessionContext) -> Workflow
         PageState.LOGIN_CHALLENGE: _handle_login_challenge,
         PageState.LOGIN_PASSWORD: _handle_login_password,
         PageState.LOGIN_SUBMITTING: _handle_login_submitting,
+        PageState.LOGIN_ERROR: _handle_login_error,
         PageState.UNKNOWN: _handle_unknown,
     }
     return WorkflowEngine(handlers=handlers, context=context, driver=driver, max_steps=30)

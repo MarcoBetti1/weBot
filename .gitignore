@@ -13,6 +13,7 @@ cookies.json
 Dockerfile
 
 profile/
+.webot/
 
 .venv/
 
