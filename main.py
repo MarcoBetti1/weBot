@@ -20,6 +20,7 @@ from weBot.data.graph_io import export_edges_to_csv
 from weBot.data.storage import save_json
 from weBot.workflows import follower_graph as follower_workflow
 from weBot.workflows.profile import fetch_profile
+from weBot.core.driver import DriverConfig, validate_profile_name
 
 
 COMMAND_CHOICES = ("login", "engage", "follower-graph", "profile", "session")
@@ -72,10 +73,21 @@ def _collect_cli_overrides(argv: Iterable[str]) -> Set[str]:
 
 
 PATH_KEYS = {
-    "chrome_profile",
     "profiles_root",
     "output",
 }
+
+
+def _resolve_profiles_root(raw: str | None) -> Path:
+    root = Path(raw).expanduser() if raw else Path(".webot/profiles")
+    root = root.absolute()
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def _profile_alias_to_path(alias: str, *, profiles_root: Path) -> Path:
+    normalized = validate_profile_name(alias)
+    return (profiles_root / normalized).expanduser().absolute()
 
 
 def _apply_config(
@@ -141,6 +153,11 @@ def _build_parser() -> argparse.ArgumentParser:
         type=float,
         default=600.0,
         help="Seconds to wait for manual login before aborting (0 or negative for unlimited)",
+    )
+    parser.add_argument(
+        "--profile-name",
+        dest="profile_name",
+        help="Friendly name to assign when persisting a Chrome profile (login only)",
     )
     return parser
 
@@ -216,6 +233,7 @@ def _parse_session_command(
             parser = build_parser("login")
             parser.add_argument("--manual-timeout", type=float, default=default_manual_timeout)
             parser.add_argument("--no-persist-profile", action="store_true")
+            parser.add_argument("--profile-name")
             return command, parser.parse_args(args)
 
         if command == "engage":
@@ -379,6 +397,7 @@ def _session_loop(bot: BotController, logger: logging.Logger, default_manual_tim
                 state = bot.manual_login(
                     manual_timeout=manual_timeout,
                     persist_profile=not getattr(options, "no_persist_profile", False),
+                    profile_name=getattr(options, "profile_name", None),
                 )
                 print(f"Manual login completed with state: {state.name}")
                 logger.info("Manual login completed: state=%s", state.name)
@@ -605,27 +624,66 @@ def main(argv: list[str] | None = None) -> int:
     if args.command in {"follower-graph", "profile"} and not args.handle:
         parser.error("--handle is required for follower-graph and profile commands")
 
+    profiles_root = _resolve_profiles_root(getattr(args, "profiles_root", None))
+
+    profile_name: str | None = None
+    profile_name_path: Path | None = None
+    if getattr(args, "profile_name", None):
+        if args.command != "login":
+            parser.error("--profile-name is only valid for the login command")
+        try:
+            profile_name = validate_profile_name(args.profile_name)
+        except ValueError as exc:
+            parser.error(str(exc))
+        profile_name_path = _profile_alias_to_path(profile_name, profiles_root=profiles_root)
+        if profile_name_path.exists():
+            if args.fresh_profile:
+                parser.error(
+                    f"Chrome profile '{profile_name}' already exists under {profile_name_path}. Use a new name or remove the existing folder."
+                )
+            parser.error(
+                f"Chrome profile '{profile_name}' already exists. Use --chrome-profile {profile_name} to reuse it."
+            )
+        args.profile_name = profile_name
+
     if args.command not in {"login", "session"} and not args.chrome_profile:
-        parser.error("--chrome-profile is required for this command. Run the login command first to create one.")
+        parser.error("--chrome-profile <saved-name> is required for this command. Run the login command first to create one.")
 
     if args.chrome_profile and args.fresh_profile:
         parser.error("--fresh-profile cannot be combined with --chrome-profile")
+
+    chrome_profile_alias: str | None = None
+    chrome_profile_path: Path | None = None
+    if args.chrome_profile:
+        try:
+            chrome_profile_alias = validate_profile_name(args.chrome_profile)
+        except ValueError as exc:
+            parser.error(str(exc))
+        chrome_profile_path = _profile_alias_to_path(chrome_profile_alias, profiles_root=profiles_root)
+        if not chrome_profile_path.exists():
+            parser.error(
+                f"Chrome profile '{chrome_profile_alias}' not found under {profiles_root}. Run the login command to create it."
+            )
+        args.chrome_profile = chrome_profile_alias
 
     if args.manual_timeout is not None and args.manual_timeout < 0:
         manual_timeout = None
     else:
         manual_timeout = args.manual_timeout
 
-    from weBot.core.driver import DriverConfig
-
-    user_data_dir = Path(args.chrome_profile).expanduser() if args.chrome_profile else None
-    profiles_root = Path(args.profiles_root).expanduser() if args.profiles_root else None
+    user_data_dir = chrome_profile_path
+    bootstrap_profile = args.fresh_profile
+    if args.command == "login" and profile_name and args.fresh_profile:
+        assert profile_name_path is not None
+        profile_name_path.parent.mkdir(parents=True, exist_ok=True)
+        user_data_dir = profile_name_path
+        bootstrap_profile = False
     use_ephemeral_profile = user_data_dir is None and not args.fresh_profile
     driver_config = DriverConfig(
         headless=args.headless,
         user_data_dir=user_data_dir,
         use_ephemeral_profile=use_ephemeral_profile,
-        bootstrap_profile=args.fresh_profile,
+        bootstrap_profile=bootstrap_profile,
         profile_root=profiles_root,
         user_agent=args.user_agent,
     )
@@ -639,7 +697,11 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if args.command == "login":
-            final_state = bot.manual_login(manual_timeout=manual_timeout, persist_profile=True)
+            final_state = bot.manual_login(
+                manual_timeout=manual_timeout,
+                persist_profile=True,
+                profile_name=profile_name,
+            )
             if final_state != bot.context.current_state:
                 bot.context.update_state(final_state)
             print(f"Manual login completed with state: {final_state.name}")

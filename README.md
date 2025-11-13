@@ -45,27 +45,29 @@ Legacy modules such as `scripts/` and `weBot/util.py` intentionally raise
 3. **Capture an authenticated Chrome profile via manual login.**
 
         ```bash
-        python -m main login --fresh-profile --manual-timeout 0
+        python -m main login --fresh-profile --profile-name profile1 --manual-timeout 0
         ```
 
         The CLI launches Chrome, navigates to the Twitter login page, and waits for
         the home timeline. Complete every authentication step yourself (password,
         challenges, 2FA, etc.). Once the timeline loads the bot marks the session as
-        logged in and persists the profile directory. The console prints the saved
-        profile path (for example `.webot/profiles/profile-20251112-102030`). Keep
-        that path safe—it is required for every future workflow run.
+        logged in and persists the profile directory. When you supply
+        `--profile-name`, the console prints both the friendly alias and the
+        underlying path (for example `profile1 (.webot/profiles/profile1)`). Keep
+        the alias handy—use it for every future workflow run.
 
 4. **Reuse the saved profile for automation.**
 
         ```bash
-        python -m main engage --chrome-profile .webot/profiles/profile-20251112-102030 --posts 5
-        python -m main follower-graph --chrome-profile .webot/profiles/profile-20251112-102030 --handle jack --layers 2
-        python -m main profile --chrome-profile .webot/profiles/profile-20251112-102030 --handle jack --descriptive
+        python -m main engage --chrome-profile profile1 --posts 5
+        python -m main follower-graph --chrome-profile profile1 --handle jack --layers 2
+        python -m main profile --chrome-profile profile1 --handle jack --descriptive
         ```
 
         All non-login commands require `--chrome-profile` (or a config file that
-        provides the same value). The bot refuses to run workflows unless it can
-        detect a persisted profile that is already authenticated.
+        provides the same value). Pass the saved name (`profile1`); the bot refuses
+        to run workflows unless it can detect a persisted profile that is already
+        authenticated.
 
 ### Interactive session mode
 
@@ -73,7 +75,7 @@ For exploratory testing you can keep a single Selenium session alive and run
 multiple commands without restarting Chrome:
 
 ```bash
-python -m main session --chrome-profile .webot/profiles/profile-20251112-102030
+python -m main session --chrome-profile profile1
 ```
 
 The program opens the browser, then presents a `webot>` prompt. Available
@@ -94,12 +96,17 @@ workflow failures.
     credentials automatically; you do every step in the browser window.
 - Pass `--manual-timeout <seconds>` if you want an upper bound on how long the
     CLI waits for the home timeline. Use `--manual-timeout 0` to wait forever.
+- Provide `--profile-name <alias>` during manual login to assign a memorable name
+    to the saved profile. Subsequent commands can reuse it via
+    `--chrome-profile <alias>` instead of copying the full path.
+- Login state lives inside the saved Chrome profile directory; the CLI does not
+    generate a separate `cookies.json` file.
 - Combine `--fresh-profile` with `--profiles-root /absolute/path` to store
     saved profiles outside the repository. If you omit `--fresh-profile`, the
     login command uses a temporary profile that is persisted only after the home
     timeline appears.
 - To reuse an existing profile without logging in again, supply
-    `--chrome-profile <path>` to the login command; the CLI will detect that the
+    `--chrome-profile <saved-name>` to the login command; the CLI will detect that the
     session is already authenticated and simply confirm it.
 
 ### Running workflows from config files
@@ -109,7 +116,7 @@ You can store CLI options in JSON or YAML and load them with `@config` syntax.
 ```yaml
 # config.yaml
 command: profile
-chrome_profile: .webot/profiles/profile-20251112-102030
+chrome_profile: profile1
 handle: jack
 descriptive: true
 ```
@@ -141,7 +148,7 @@ extraction). Review these files when extending or testing specific routines.
 ## Troubleshooting
 
 - **`A saved Chrome profile is required`** – run the login command first, allow
-    it to persist the profile, then pass that path via `--chrome-profile`.
+    it to persist the profile, then pass that name via `--chrome-profile`.
 - **`The provided Chrome profile is not authenticated`** – open the profile in
     Chrome manually, confirm you can access the home timeline, or run the login
     command again to refresh cookies and security tokens.
@@ -155,3 +162,6 @@ extraction). Review these files when extending or testing specific routines.
 
 - Improve profile health checks (detect lockouts, expired sessions).
 - Keep iterating on human-like delays to dodge bot protection.
+- Surface saved-profile health checks (locked, stale, or missing cookies).
+- add/improve configuration: Use variables where possible (typing speed, pausing between posts, all sorts of delay,...) and read them from a config file for easy changing of variables.
+- session exit is very slow.

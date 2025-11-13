@@ -1,6 +1,7 @@
 """Browser session management utilities."""
 from __future__ import annotations
 
+import re
 import shutil
 import tempfile
 from dataclasses import dataclass, field
@@ -11,6 +12,22 @@ from typing import Iterable, Optional
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
+
+
+_PROFILE_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+
+
+def validate_profile_name(name: str) -> str:
+    """Validate and normalise a user-supplied profile name."""
+
+    candidate = name.strip()
+    if not candidate:
+        raise ValueError("Chrome profile name cannot be empty")
+    if not _PROFILE_NAME_PATTERN.fullmatch(candidate):
+        raise ValueError(
+            "Chrome profile name must be 1-64 characters of letters, digits, hyphen, or underscore"
+        )
+    return candidate
 
 
 @dataclass
@@ -119,7 +136,7 @@ class DriverManager:
         self._profile_path = None
         self._cleanup_profile = False
 
-    def persist_profile(self, *, root: Optional[Path] = None) -> Optional[Path]:
+    def persist_profile(self, *, root: Optional[Path] = None, name: Optional[str] = None) -> Optional[Path]:
         """Convert an ephemeral profile into a reusable one.
 
         Parameters
@@ -127,6 +144,9 @@ class DriverManager:
         root:
             Directory where the profile should be moved. Defaults to
             ``config.profile_root`` or ``.webot/profiles``.
+        name:
+            Optional friendly name. When provided the profile folder is renamed
+            to ``<root>/<name>``.
 
         Returns
         -------
@@ -138,21 +158,40 @@ class DriverManager:
         if not self._profile_path:
             return None
 
-        if not self._cleanup_profile:
-            return self._profile_path
-
         root_dir = root or self.config.profile_root or Path(".webot/profiles")
         root_dir = Path(root_dir).expanduser().absolute()
         root_dir.mkdir(parents=True, exist_ok=True)
 
-        candidate = root_dir / self._profile_path.name
+        source = Path(self._profile_path).expanduser().absolute()
+
+        if name is not None:
+            friendly = validate_profile_name(name)
+            candidate = (root_dir / friendly).expanduser().absolute()
+            candidate.parent.mkdir(parents=True, exist_ok=True)
+            if source == candidate:
+                self._cleanup_profile = False
+                self._profile_path = candidate
+                return candidate
+            if candidate.exists():
+                raise FileExistsError(f"Chrome profile already exists: {candidate}")
+
+            shutil.move(str(source), str(candidate))
+            self._profile_path = candidate
+            self._cleanup_profile = False
+            return candidate
+
+        if not self._cleanup_profile:
+            self._profile_path = source
+            return self._profile_path
+
+        candidate = (root_dir / source.name).expanduser().absolute()
         counter = 0
         while candidate.exists():
             counter += 1
-            candidate = root_dir / f"{self._profile_path.name}-{counter}"
+            candidate = root_dir / f"{source.name}-{counter}"
 
-        shutil.move(str(self._profile_path), str(candidate))
-        self._profile_path = candidate
+        shutil.move(str(source), str(candidate))
+        self._profile_path = candidate.expanduser().absolute()
         self._cleanup_profile = False
         return self._profile_path
 
@@ -170,7 +209,10 @@ class DriverManager:
         """
 
         if self.config.user_data_dir:
-            return Path(self.config.user_data_dir).expanduser().absolute(), False
+            absolute = Path(self.config.user_data_dir).expanduser().absolute()
+            absolute.parent.mkdir(parents=True, exist_ok=True)
+            absolute.mkdir(parents=True, exist_ok=True)
+            return absolute, False
 
         if self.config.bootstrap_profile:
             root = self.config.profile_root or Path(".webot/profiles")

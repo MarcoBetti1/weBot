@@ -10,7 +10,7 @@ from selenium.webdriver.remote.webdriver import WebDriver
 from .brains.loops import LoopManager
 from .core.actions import navigation, timeline
 from .core.actions.utils import random_delay
-from .core.driver import DriverConfig, DriverManager
+from .core.driver import DriverConfig, DriverManager, validate_profile_name
 from .core.recognizers import recognize_state
 from .core.state import ActionResult, PageState, SessionContext
 
@@ -64,9 +64,27 @@ class BotController:
         *,
         manual_timeout: float | None = 600.0,
         persist_profile: bool = True,
+        profile_name: Optional[str] = None,
     ) -> PageState:
         if self._driver is None:
             raise RuntimeError("Driver not started")
+
+        if profile_name and not persist_profile:
+            raise ValueError("profile_name requires persist_profile=True")
+
+        normalized_name = validate_profile_name(profile_name) if profile_name else None
+
+        def _persist_current_profile() -> None:
+            if not persist_profile:
+                return
+            try:
+                self.persist_profile(profile_name=normalized_name)
+            except FileExistsError as exc:
+                if normalized_name:
+                    raise RuntimeError(
+                        f"Chrome profile '{normalized_name}' already exists. Choose a different --profile-name or remove the existing directory."
+                    ) from exc
+                raise
 
         self.context.set_login_method("manual")
 
@@ -74,8 +92,7 @@ class BotController:
         navigation.navigate_to(self.driver, self.context, self.context.home_url)
         if self.context.current_state == PageState.HOME_TIMELINE:
             self.context.logged_in = True
-            if persist_profile:
-                self.persist_profile()
+            _persist_current_profile()
             print("Existing session detected; already on home timeline.")
             return PageState.HOME_TIMELINE
 
@@ -83,14 +100,15 @@ class BotController:
         random_delay(0.3, 0.6)
 
         state = self._manual_login(manual_timeout=manual_timeout)
-        if state == PageState.HOME_TIMELINE and persist_profile:
-            self.persist_profile()
+        if state == PageState.HOME_TIMELINE:
+            _persist_current_profile()
         return state
 
-    def persist_profile(self) -> Optional[Path]:
-        path = self.driver_manager.persist_profile()
+    def persist_profile(self, *, profile_name: Optional[str] = None) -> Optional[Path]:
+        path = self.driver_manager.persist_profile(name=profile_name)
         if path:
-            print(f"Chrome profile available for reuse: {path}")
+            alias = profile_name or path.name
+            print(f"Chrome profile available for reuse: {alias} ({path})")
         return path
 
     def _manual_login(self, *, manual_timeout: float | None = 600.0, poll_interval: float = 2.0) -> PageState:

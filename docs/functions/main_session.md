@@ -14,6 +14,9 @@
 ## `_session_loop(bot, logger, default_manual_timeout)`
 - **Purpose:** Implements the `webot>` prompt, parsing and executing commands until exit.
 - **Key commands:** `login`, `engage`, `profile`, `follower-graph`, `navigate`, `like`, `repost`, `quote`, `comment`, `go-home`, `status`, `help`, `exit`/`quit`.
+- **Login aliasing:** `login --profile-name myprofile` persists the current Chrome
+  session under a friendly name; subsequent commands must reference
+  `--chrome-profile myprofile` (absolute paths are not accepted).
 - **Error handling:**
   - Wraps every command execution in a `try/except`; on failure it prints `[error] <message>` and records `logger.exception` for full stack traces.
   - Ignores empty input and handles `Ctrl+C` (`KeyboardInterrupt`) without terminating the session.
