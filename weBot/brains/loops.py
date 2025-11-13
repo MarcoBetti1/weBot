@@ -8,6 +8,7 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
+from ..config.behaviour import get_behaviour_settings
 from ..core.actions import timeline
 from ..core.state import ActionResult
 
@@ -58,6 +59,10 @@ def random_engage_loop(
     min_delay = float(options.get("min_delay", 0.8))
     max_delay = float(options.get("max_delay", 1.6))
 
+    behaviour = get_behaviour_settings()
+    loop_error_pause = behaviour.loop_error_pause
+    cycle_pause_min, cycle_pause_max = behaviour.loop_cycle_pause.as_tuple()
+
     logger.info(
         "random_engage loop starting (posts_per_cycle=%s iteration_limit=%s)",
         posts_per_cycle,
@@ -78,7 +83,7 @@ def random_engage_loop(
             if consecutive_errors >= 3:
                 logger.error("aborting random_engage loop after repeated setup failures")
                 break
-            time.sleep(2.0)
+            time.sleep(loop_error_pause)
             continue
 
         consecutive_errors = 0
@@ -113,7 +118,7 @@ def random_engage_loop(
                     processed,
                     result.message or "unknown error",
                 )
-                stop_event.wait(2.0)
+                stop_event.wait(loop_error_pause)
                 break
 
             # Allow cooperative cancellation between posts.
@@ -131,9 +136,9 @@ def random_engage_loop(
             bot.go_home()
         except Exception as exc:  # pragma: no cover - defensive logging
             logger.warning("cycle=%s failed to reset home timeline: %s", cycle, exc)
-            time.sleep(2.0)
+            time.sleep(loop_error_pause)
 
-        if stop_event.wait(random.uniform(2.0, 4.0)):
+        if stop_event.wait(random.uniform(cycle_pause_min, cycle_pause_max)):
             break
 
     logger.info("random_engage loop stopped")

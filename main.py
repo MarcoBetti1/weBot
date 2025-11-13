@@ -20,6 +20,7 @@ from weBot.data.graph_io import export_edges_to_csv
 from weBot.data.storage import save_json
 from weBot.workflows import follower_graph as follower_workflow
 from weBot.workflows.profile import fetch_profile
+from weBot.config.behaviour import load_behaviour_settings, set_behaviour_settings
 from weBot.core.driver import DriverConfig, validate_profile_name
 
 
@@ -75,6 +76,7 @@ def _collect_cli_overrides(argv: Iterable[str]) -> Set[str]:
 PATH_KEYS = {
     "profiles_root",
     "output",
+    "behavior_config",
 }
 
 
@@ -129,7 +131,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--chrome-profile",
         dest="chrome_profile",
-        help="Path to a Chrome user data directory to reuse between runs",
+        help="Saved Chrome profile name to reuse between runs",
     )
     parser.add_argument(
         "--fresh-profile",
@@ -158,6 +160,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--profile-name",
         dest="profile_name",
         help="Friendly name to assign when persisting a Chrome profile (login only)",
+    )
+    parser.add_argument(
+        "--behavior-config",
+        dest="behavior_config",
+        help="Path to YAML or JSON file overriding human-like timing defaults",
     )
     return parser
 
@@ -625,6 +632,15 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--handle is required for follower-graph and profile commands")
 
     profiles_root = _resolve_profiles_root(getattr(args, "profiles_root", None))
+
+    behaviour_config_path: Path | None = None
+    if getattr(args, "behavior_config", None):
+        behaviour_config_path = Path(args.behavior_config).expanduser()
+        if not behaviour_config_path.is_file():
+            parser.error(f"Behaviour config not found: {behaviour_config_path}")
+
+    behaviour_settings = load_behaviour_settings(behaviour_config_path)
+    set_behaviour_settings(behaviour_settings)
 
     profile_name: str | None = None
     profile_name_path: Path | None = None

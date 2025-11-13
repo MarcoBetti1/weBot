@@ -97,7 +97,7 @@ class BotController:
             return PageState.HOME_TIMELINE
 
         navigation.navigate_to(self.driver, self.context, self.context.login_url)
-        random_delay(0.3, 0.6)
+        random_delay(0.3, 0.6, label="pause_short")
 
         state = self._manual_login(manual_timeout=manual_timeout)
         if state == PageState.HOME_TIMELINE:

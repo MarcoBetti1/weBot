@@ -4,6 +4,7 @@ from __future__ import annotations
 import time
 from typing import Optional
 
+from ..config.behaviour import get_behaviour_settings
 from ..core.state import ActionResult
 from ..core.actions import timeline
 from .policy import InteractionTracker, choose_actions, execute_actions
@@ -11,6 +12,8 @@ from .policy import InteractionTracker, choose_actions, execute_actions
 
 def process_feed(bot, *, posts: int = 10, tracker: Optional[InteractionTracker] = None) -> None:
     tracker = tracker or InteractionTracker()
+    settings = get_behaviour_settings()
+
     for _ in range(posts):
         post = timeline.fetch_post(bot.driver)
         if post:
@@ -20,4 +23,4 @@ def process_feed(bot, *, posts: int = 10, tracker: Optional[InteractionTracker] 
         timeline.refresh_feed(bot.driver, bot.context)
         if not result.success:
             break
-        time.sleep(0.5)
+        time.sleep(settings.post_pause_seconds)

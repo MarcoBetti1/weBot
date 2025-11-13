@@ -1,0 +1,49 @@
+# Human-like timing configuration for weBot.
+# Copy this file to config/behavior.yaml (or behaviour.yaml) and adjust values.
+
+typing_delay:
+  min: 0.1
+  max: 0.8
+
+random_delay:
+  min: 1.0
+  max: 3.0
+
+micro_wait:
+  min: 0.05
+  max: 0.25
+
+navigation_wait: 1.2
+post_pause_seconds: 0.5
+
+loop:
+  error_pause: 2.0
+  cycle_pause:
+    min: 2.0
+    max: 4.0
+
+named_ranges:
+  pause_short:
+    min: 0.3
+    max: 0.6
+  pause_medium:
+    min: 0.5
+    max: 1.0
+  pause_long:
+    min: 0.8
+    max: 1.6
+  pause_medium_long:
+    min: 0.5
+    max: 1.2
+  scroll_settle:
+    min: 0.5
+    max: 1.4
+  menu_pause:
+    min: 0.4
+    max: 1.0
+  scroll_fetch:
+    min: 1.2
+    max: 2.0
+  profile_fetch:
+    min: 0.8
+    max: 1.4

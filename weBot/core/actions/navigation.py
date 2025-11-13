@@ -6,13 +6,22 @@ from typing import Optional
 
 from selenium.webdriver.remote.webdriver import WebDriver
 
+from ...config.behaviour import get_behaviour_settings
 from ..recognizers import recognize_state
 from ..state import ActionResult, PageState, SessionContext
 
 
-def navigate_to(driver: WebDriver, context: SessionContext, url: str, *, wait_seconds: float = 1.2) -> ActionResult:
+def navigate_to(
+    driver: WebDriver,
+    context: SessionContext,
+    url: str,
+    *,
+    wait_seconds: float | None = None,
+) -> ActionResult:
+    settings = get_behaviour_settings()
+    pause = settings.navigation_wait if wait_seconds is None else wait_seconds
     driver.get(url)
-    time.sleep(wait_seconds)
+    time.sleep(pause)
     snapshot = recognize_state(driver)
     context.update_state(snapshot.state, **snapshot.metadata)
     context.post_index = 0

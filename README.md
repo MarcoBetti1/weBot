@@ -124,6 +124,20 @@ descriptive: true
 Invoke it with `python -m main @config.yaml`. Command-line arguments override
 values from the file when both are provided.
 
+### Behaviour tuning
+
+Copy `weBot/config/behavior.example.yaml` to `weBot/config/behavior.yaml`
+(or supply your own file via `--behavior-config`) to adjust human-like timing
+parameters. The file controls typing cadence, generic random delays,
+navigation waits, pauses between posts, and loop recovery timings. Each
+`named_ranges` entry corresponds to a specific action (for example, the
+`pause_short` label governs short pauses before/after lightweight timeline
+interactions). Update the values to fit your risk tolerance, then point the
+CLI at the file with `--behavior-config config/behavior.yaml` if you choose a
+non-default location. YAML configs require the `PyYAML` package, which is now
+included in `requirements.txt`. Review `docs/behaviour_config.md` for a full
+breakdown of every supported field and named range.
+
 ## Key details
 
 - **State awareness:** Every action is guarded by `PageState` detection so the
@@ -163,5 +177,4 @@ extraction). Review these files when extending or testing specific routines.
 - Improve profile health checks (detect lockouts, expired sessions).
 - Keep iterating on human-like delays to dodge bot protection.
 - Surface saved-profile health checks (locked, stale, or missing cookies).
-- add/improve configuration: Use variables where possible (typing speed, pausing between posts, all sorts of delay,...) and read them from a config file for easy changing of variables.
 - session exit is very slow.

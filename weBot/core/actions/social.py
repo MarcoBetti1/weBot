@@ -25,7 +25,7 @@ HANDLE_LINK_SELECTOR = "a[href^='/']"
 def open_profile(driver: WebDriver, handle: str) -> ActionResult:
     url = f"https://twitter.com/{handle}"
     driver.get(url)
-    random_delay(0.8, 1.6)
+    random_delay(0.8, 1.6, label="profile_fetch")
     return ActionResult(True, PageState.PROFILE, metadata={"handle": handle})
 
 

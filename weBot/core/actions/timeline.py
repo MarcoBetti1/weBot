@@ -112,7 +112,7 @@ def scroll(driver: WebDriver, context: SessionContext) -> ActionResult:
         if target is None:
             last_height = driver.execute_script("return document.body.scrollHeight")
             driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-            random_delay(1.2, 2.0)
+            random_delay(1.2, 2.0, label="scroll_fetch")
             refresh_feed(driver, context)
             new_height = driver.execute_script("return document.body.scrollHeight")
             if new_height > last_height:
@@ -129,7 +129,7 @@ def scroll(driver: WebDriver, context: SessionContext) -> ActionResult:
             return ActionResult(False, PageState.HOME_TIMELINE, message="No further posts available")
 
         driver.execute_script("arguments[0].scrollIntoView({block: 'center', behavior: 'smooth'});", target)
-        random_delay(0.5, 1.4)
+        random_delay(0.5, 1.4, label="scroll_settle")
         context.post_index += 1
         refresh_feed(driver, context)
         return ActionResult(True, PageState.HOME_TIMELINE, metadata={"post_index": str(context.post_index)})
@@ -215,7 +215,7 @@ def repost(driver: WebDriver, *, quote: Optional[str] = None) -> bool:
         if quote:
             quote_button = wait_for(driver, EC.element_to_be_clickable((By.XPATH, "//a[@href='/compose/post']")), 5)
             driver.execute_script("arguments[0].click();", quote_button)
-            random_delay(0.5, 1.0)
+            random_delay(0.5, 1.0, label="pause_medium")
             quote_input = wait_for(driver, EC.presence_of_element_located((By.CSS_SELECTOR, "div[role='textbox']")), 10)
             human_type(quote_input, quote)
             tweet_button = wait_for(driver, EC.element_to_be_clickable((By.CSS_SELECTOR, "button[data-testid='tweetButton']")), 10)
@@ -261,7 +261,7 @@ def describe_center_post(driver: WebDriver) -> Optional[str]:
 
 def go_to_top(driver: WebDriver) -> None:
     driver.execute_script("window.scrollTo(0, 0);")
-    random_delay(0.3, 0.6)
+    random_delay(0.3, 0.6, label="pause_short")
 
 
 def create_post(driver: WebDriver, text: str) -> bool:
@@ -276,7 +276,7 @@ def create_post(driver: WebDriver, text: str) -> bool:
             compose_button = wait_for(driver, EC.element_to_be_clickable(COMPOSE_BUTTON_SELECTORS[0]), 10)
 
         driver.execute_script("arguments[0].click();", compose_button)
-        random_delay(0.3, 0.6)
+        random_delay(0.3, 0.6, label="pause_short")
 
         textarea = wait_for(driver, EC.presence_of_element_located((By.CSS_SELECTOR, COMPOSE_TEXTAREA_SELECTOR)), 10)
         driver.execute_script("arguments[0].focus();", textarea)
@@ -294,7 +294,7 @@ def create_post(driver: WebDriver, text: str) -> bool:
             raise TimeoutException("Post submit button not found")
 
         driver.execute_script("arguments[0].click();", submit)
-        random_delay(0.5, 1.0)
+        random_delay(0.5, 1.0, label="pause_medium")
         return True
     except TimeoutException:
         return False
@@ -311,7 +311,7 @@ def open_author_profile(driver: WebDriver) -> bool:
         driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", username_element)
         micro_wait()
         driver.execute_script("arguments[0].click();", username_element)
-        random_delay(0.8, 1.6)
+        random_delay(0.8, 1.6, label="pause_long")
         return True
     except TimeoutException:
         return False
@@ -323,7 +323,7 @@ def follow(driver: WebDriver) -> bool:
         driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", button)
         micro_wait()
         driver.execute_script("arguments[0].click();", button)
-        random_delay(0.5, 1.2)
+        random_delay(0.5, 1.2, label="pause_medium_long")
         return True
     except TimeoutException:
         return False
@@ -336,10 +336,10 @@ def unfollow(driver: WebDriver) -> bool:
         driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", unfollow_button)
         micro_wait()
         driver.execute_script("arguments[0].click();", unfollow_button)
-        random_delay(0.4, 1.0)
+        random_delay(0.4, 1.0, label="menu_pause")
         confirm = wait_for(driver, EC.element_to_be_clickable((By.XPATH, "//div[@role='menuitem' or @role='button']//span[contains(text(), 'Unfollow')]")), 5)
         driver.execute_script("arguments[0].click();", confirm)
-        random_delay(0.4, 1.0)
+        random_delay(0.4, 1.0, label="menu_pause")
         return True
     except TimeoutException:
         return False

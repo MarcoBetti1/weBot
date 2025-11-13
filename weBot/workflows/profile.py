@@ -63,11 +63,11 @@ def fetch_profile(bot: BotController, handle: str, *, descriptive: bool = False)
 
     if descriptive:
         bot.driver.get(f"https://twitter.com/{handle_value}/followers")
-        random_delay(0.8, 1.4)
+        random_delay(0.8, 1.4, label="profile_fetch")
         followers_list, _ = social.collect_handles_from_modal(driver)
 
         bot.driver.get(f"https://twitter.com/{handle_value}/following")
-        random_delay(0.8, 1.4)
+        random_delay(0.8, 1.4, label="profile_fetch")
         following_list, _ = social.collect_handles_from_modal(driver)
 
     return ProfileData(
