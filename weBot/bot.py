@@ -7,6 +7,7 @@ from typing import Optional
 
 from selenium.webdriver.remote.webdriver import WebDriver
 
+from .brains.loops import LoopManager
 from .core.actions import navigation, timeline
 from .core.actions.utils import random_delay
 from .core.driver import DriverConfig, DriverManager
@@ -27,6 +28,7 @@ class BotController:
         self.context = SessionContext(login_url=login_url, home_url=home_url)
         self.driver_manager = DriverManager(driver_config)
         self._driver: Optional[WebDriver] = None
+        self.loop_manager = LoopManager(self)
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -49,6 +51,8 @@ class BotController:
         self._driver = self.driver_manager.create()
 
     def stop(self) -> None:
+        if self.loop_manager.is_running():
+            self.loop_manager.stop(wait=5.0)
         self.driver_manager.quit()
         self._driver = None
 
@@ -176,11 +180,11 @@ class BotController:
     def reply_to_center_post(self, text: str) -> bool:
         self._require_persisted_profile()
         return timeline.reply(self.driver, text)
-    
+
     def quote_center_post(self, text: str) -> bool:
         self._require_persisted_profile()
         return timeline.quote(self.driver, text)
-    
+
     def comment_on_center_post(self, text: str) -> bool:
         self._require_persisted_profile()
         return timeline.comment(self.driver, text)

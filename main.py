@@ -271,6 +271,26 @@ def _parse_session_command(
             parser.add_argument("--text", required=True)
             return command, parser.parse_args(args)
 
+        if command == "stop":
+            parser = build_parser("stop")
+            return command, parser.parse_args(args)
+
+        if command == "loop":
+            normalized = list(args)
+            if not normalized:
+                normalized = ["status"]
+            elif normalized[0] not in {"start", "stop", "status", "list"}:
+                normalized.insert(0, "start")
+
+            parser = build_parser("loop")
+            parser.add_argument("action", choices=["start", "stop", "status", "list"])
+            parser.add_argument("script", nargs="?", help="Script name (required for start)")
+            parser.add_argument("--posts-per-cycle", dest="posts_per_cycle", type=int, default=10)
+            parser.add_argument("--iterations", dest="iterations", type=int)
+            parser.add_argument("--min-delay", dest="min_delay", type=float)
+            parser.add_argument("--max-delay", dest="max_delay", type=float)
+            return command, parser.parse_args(normalized)
+
         if command in {"go-home", "status", "help", "exit", "quit"}:
             return command, argparse.Namespace()
 
@@ -295,6 +315,9 @@ def _print_session_help() -> None:
         "  quote --text TEXT\n"
         "  comment --text TEXT\n"
         "  makepost --text TEXT\n"
+    "  loop [start] NAME [--posts-per-cycle N] [--iterations N] [--min-delay S] [--max-delay S]\n"
+    "  loop stop | loop status | loop list\n"
+    "  stop\n"
         "  go-home\n"
         "  status\n"
         "  help\n"
@@ -333,7 +356,15 @@ def _session_loop(bot: BotController, logger: logging.Logger, default_manual_tim
 
         logger.info("Command received: %s %s", command, vars(options) if options else {})
 
+        if bot.loop_manager.is_running() and command not in {"loop", "help", "status", "stop", "exit", "quit"}:
+            print("A loop script is running. Stop it with 'loop stop' before executing other commands.")
+            logger.warning("Command %s blocked because a loop script is active.", command)
+            continue
+
         if command in {"exit", "quit"}:
+            if bot.loop_manager.is_running():
+                print("Stopping active loop before exiting...")
+                bot.loop_manager.stop(wait=5.0)
             break
 
         if command == "help":
@@ -356,6 +387,77 @@ def _session_loop(bot: BotController, logger: logging.Logger, default_manual_tim
             if command == "engage":
                 _execute_workflow(bot, "engage", options)
                 logger.info("Engage workflow finished (posts=%s).", getattr(options, "posts", 10))
+                continue
+
+            if command == "loop":
+                action = options.action
+                if action == "list":
+                    scripts = bot.loop_manager.available_scripts()
+                    if not scripts:
+                        print("No loop scripts available.")
+                    else:
+                        print("Available loop scripts:")
+                        for name, definition in sorted(scripts.items()):
+                            print(f"  {name}: {definition.description}")
+                    logger.info("Loop list displayed (count=%s).", len(scripts))
+                    continue
+
+                if action == "status":
+                    status = bot.loop_manager.status()
+                    if status["running"]:
+                        print(f"Loop running: {status['script']}")
+                    else:
+                        print("No loop script is running.")
+                    logger.info("Loop status queried; running=%s script=%s", status["running"], status["script"])
+                    continue
+
+                if action == "stop":
+                    if bot.loop_manager.stop():
+                        print("Loop stop requested.")
+                        logger.info("Loop stop requested.")
+                    else:
+                        print("No active loop to stop.")
+                        logger.info("Loop stop requested but no active script.")
+                    continue
+
+                script_name = options.script
+                if not script_name:
+                    print("Specify a script name, e.g. 'loop random_engage'. Use 'loop list' to see options.")
+                    continue
+
+                script_key = script_name.lower().replace("-", "_")
+                _ensure_authenticated(bot)
+                try:
+                    bot.loop_manager.start(
+                        script_key,
+                        logger=logger,
+                        posts_per_cycle=options.posts_per_cycle,
+                        iteration_limit=options.iterations,
+                        min_delay=options.min_delay,
+                        max_delay=options.max_delay,
+                    )
+                except Exception as exc:  # pragma: no cover - interactive loop
+                    print(f"Failed to start loop: {exc}")
+                    logger.exception("Loop start failed for script=%s", script_key)
+                else:
+                    print(f"Loop script '{script_key}' started.")
+                    logger.info(
+                        "Loop script started; name=%s posts_per_cycle=%s iterations=%s min_delay=%s max_delay=%s",
+                        script_key,
+                        options.posts_per_cycle,
+                        options.iterations,
+                        options.min_delay,
+                        options.max_delay,
+                    )
+                continue
+
+            if command == "stop":
+                if bot.loop_manager.stop():
+                    print("Loop stop requested.")
+                    logger.info("Loop stop requested via 'stop' command.")
+                else:
+                    print("No active loop to stop.")
+                    logger.info("'stop' command issued with no active loop.")
                 continue
 
             if command == "profile":
