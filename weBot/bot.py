@@ -1,21 +1,17 @@
 """High-level bot controller orchestrating driver, workflows, and actions."""
 from __future__ import annotations
 
-import json
 import time
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Optional
 
 from selenium.webdriver.remote.webdriver import WebDriver
 
 from .core.actions import navigation, timeline
-from .core.actions.auth import trigger_apple_sign_in, trigger_google_sign_in
 from .core.actions.utils import random_delay
 from .core.driver import DriverConfig, DriverManager
 from .core.recognizers import recognize_state
 from .core.state import ActionResult, PageState, SessionContext
-from .core.workflow_engine import WorkflowEngine
-from .workflows.login import build_login_workflow
 
 
 class BotController:
@@ -24,48 +20,13 @@ class BotController:
     def __init__(
         self,
         *,
-        username: Optional[str] = None,
-        password: str,
-        email: Optional[str] = None,
-        phone: Optional[str] = None,
         login_url: str = "https://twitter.com/login",
         home_url: str = "https://twitter.com/home",
-        identifier_priority: Optional[Iterable[str]] = None,
         driver_config: Optional[DriverConfig] = None,
-        cookies_path: Optional[Path] = None,
     ):
-        identifier_map = {
-            "username": username,
-            "email": email,
-            "phone": phone,
-        }
-        identifiers: list[str] = []
-        if identifier_priority:
-            for key in identifier_priority:
-                value = identifier_map.get(key.lower())
-                if value and value not in identifiers:
-                    identifiers.append(value)
-        else:
-            for key in ("username", "email", "phone"):
-                value = identifier_map.get(key)
-                if value and value not in identifiers:
-                    identifiers.append(value)
-        if not identifiers:
-            raise ValueError("No login identifiers provided; supply at least one of username, email, or phone.")
-
-        self.context = SessionContext(
-            username=username,
-            password=password,
-            email=email,
-            phone=phone,
-            login_url=login_url,
-            home_url=home_url,
-            login_identifiers=identifiers,
-        )
-        self.context.set_login_method("auto")
+        self.context = SessionContext(login_url=login_url, home_url=home_url)
         self.driver_manager = DriverManager(driver_config)
         self._driver: Optional[WebDriver] = None
-        self.cookies_path = cookies_path or Path("cookies.json")
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -80,6 +41,10 @@ class BotController:
     def profile_path(self) -> Optional[Path]:
         return self.driver_manager.profile_path
 
+    @property
+    def profile_is_persistent(self) -> bool:
+        return self.driver_manager.profile_is_persistent
+
     def start(self) -> None:
         self._driver = self.driver_manager.create()
 
@@ -88,95 +53,41 @@ class BotController:
         self._driver = None
 
     # ------------------------------------------------------------------
-    # Cookie management
+    # Login workflow (manual only)
     # ------------------------------------------------------------------
-    def load_cookies(self) -> bool:
-        if self._driver is None:
-            return False
-        if not self.cookies_path.exists():
-            print(f"No cookies file found at {self.cookies_path.resolve()}.")
-            return False
-        with self.cookies_path.open("r", encoding="utf-8") as fh:
-            cookies = json.load(fh)
-        restored = 0
-        for cookie in cookies:
-            try:
-                self.driver.add_cookie(cookie)
-                restored += 1
-            except Exception as exc:  # pragma: no cover - network/driver dependent
-                print(f"Failed to add cookie {cookie.get('name')}: {exc}")
-        if restored:
-            print(f"Restored {restored} cookies from {self.cookies_path.resolve()}.")
-        else:
-            print(f"No cookies were restored from {self.cookies_path.resolve()}.")
-        return True
-
-    def save_cookies(self) -> None:
-        if self._driver is None:
-            return
-        cookies = self.driver.get_cookies()
-        with self.cookies_path.open("w", encoding="utf-8") as fh:
-            json.dump(cookies, fh, indent=2)
-
-    # ------------------------------------------------------------------
-    # Workflows
-    # ------------------------------------------------------------------
-    def login(
+    def manual_login(
         self,
         *,
-        prefer_cookies: bool = True,
-        method: str = "auto",
         manual_timeout: float | None = 600.0,
-        preserve_profile: bool = False,
+        persist_profile: bool = True,
     ) -> PageState:
         if self._driver is None:
             raise RuntimeError("Driver not started")
 
-        method = (method or "auto").lower()
-        self.context.set_login_method(method)
-        self.context.reset_login_cycle()
-        self.driver.get(self.context.login_url)
+        self.context.set_login_method("manual")
+
+        # Attempt to reuse an existing session before prompting for manual login.
+        navigation.navigate_to(self.driver, self.context, self.context.home_url)
+        if self.context.current_state == PageState.HOME_TIMELINE:
+            self.context.logged_in = True
+            if persist_profile:
+                self.persist_profile()
+            print("Existing session detected; already on home timeline.")
+            return PageState.HOME_TIMELINE
+
+        navigation.navigate_to(self.driver, self.context, self.context.login_url)
         random_delay(0.3, 0.6)
 
-        if prefer_cookies and self.load_cookies():
-            self.driver.get(self.context.home_url)
-            snapshot = recognize_state(self.driver)
-            if snapshot.state == PageState.HOME_TIMELINE:
-                self.context.logged_in = True
-                self.context.update_state(snapshot.state, **snapshot.metadata)
-                return snapshot.state
-            # fall back to credential login if cookies invalid
-            self.driver.get(self.context.login_url)
-
-        initial_snapshot = recognize_state(self.driver)
-        self.context.update_state(initial_snapshot.state, **initial_snapshot.metadata)
-
-        if method == "manual":
-            state = self._manual_login(manual_timeout=manual_timeout)
-            preserve_profile = True
-        elif method in {"google", "apple"}:
-            trigger = trigger_google_sign_in if method == "google" else trigger_apple_sign_in
-            result = trigger(self.driver)
-            if not result.success:
-                self._print_oauth_failure(method, result)
-                self.context.set_login_method("manual")
-                state = self._manual_login(manual_timeout=manual_timeout)
-                preserve_profile = True
-            else:
-                state = self._wait_for_home(timeout=180)
-        else:
-            workflow: WorkflowEngine = build_login_workflow(self.driver, self.context)
-            state = workflow.run()
-
-        if state == PageState.HOME_TIMELINE:
-            self.context.reset_login_cycle()
-            self.save_cookies()
-            if preserve_profile:
-                persisted = self.driver_manager.persist_profile()
-                if persisted:
-                    print(f"Preserved Chrome profile for reuse: {persisted}")
-            print(f"Cookies saved to {self.cookies_path.resolve()}")
+        state = self._manual_login(manual_timeout=manual_timeout)
+        if state == PageState.HOME_TIMELINE and persist_profile:
+            self.persist_profile()
         return state
+
+    def persist_profile(self) -> Optional[Path]:
+        path = self.driver_manager.persist_profile()
+        if path:
+            print(f"Chrome profile available for reuse: {path}")
+        return path
 
     def _manual_login(self, *, manual_timeout: float | None = 600.0, poll_interval: float = 2.0) -> PageState:
         if manual_timeout is not None and manual_timeout <= 0:
@@ -204,73 +115,92 @@ class BotController:
                 raise RuntimeError("Manual login timed out before reaching the home timeline.")
             time.sleep(poll_interval)
 
-    def _print_oauth_failure(self, method: str, result: ActionResult) -> None:
-        print(f"{method.title()} sign-in button was not found. Switching to manual login.")
-        if result.message:
-            print(f"Message: {result.message}")
-        if result.metadata:
-            visible = result.metadata.get("visible_buttons")
-            if visible:
-                print("Visible buttons detected: " + ", ".join(visible))
-            attempted = result.metadata.get("attempted_selectors")
-            if attempted:
-                print("Selectors tried: " + ", ".join(attempted))
-            last_error = result.metadata.get("last_error")
-            if last_error:
-                print(f"Last error: {last_error}")
-
-    def _wait_for_home(self, *, timeout: float = 90, poll_interval: float = 1.5) -> PageState:
-        deadline = time.time() + timeout
-        last_state = self.context.current_state
-        while time.time() < deadline:
-            snapshot = recognize_state(self.driver)
-            last_state = snapshot.state
-            self.context.update_state(snapshot.state, **snapshot.metadata)
-            if snapshot.state == PageState.HOME_TIMELINE:
-                self.context.logged_in = True
-                return snapshot.state
-            time.sleep(poll_interval)
-        return last_state
-
     # ------------------------------------------------------------------
     # Navigation helpers
     # ------------------------------------------------------------------
+    def _require_persisted_profile(self) -> None:
+        if not self.profile_is_persistent:
+            raise RuntimeError(
+                "A saved Chrome profile is required. Run manual_login() first and reuse the persisted profile."
+            )
+
     def go_home(self) -> PageState:
+        self._require_persisted_profile()
         result = navigation.navigate_to(self.driver, self.context, self.context.home_url)
-        return result.next_state or self.context.current_state
+        timeline.go_to_top(self.driver)
+        state = result.next_state or self.context.current_state
+        if state == PageState.HOME_TIMELINE:
+            self.context.logged_in = True
+        timeline.refresh_feed(self.driver, self.context)
+        return state
 
     def navigate(self, url: str) -> ActionResult:
-        return navigation.navigate_to(self.driver, self.context, url)
+        self._require_persisted_profile()
+        result = navigation.navigate_to(self.driver, self.context, url)
+        if (result.next_state or self.context.current_state) == PageState.HOME_TIMELINE:
+            self.context.logged_in = True
+        return result
 
     def ensure_home(self) -> PageState:
-        return navigation.ensure_state(self.driver, self.context, PageState.HOME_TIMELINE, self.context.home_url)
+        self._require_persisted_profile()
+        state = navigation.ensure_state(self.driver, self.context, PageState.HOME_TIMELINE, self.context.home_url)
+        if state == PageState.HOME_TIMELINE:
+            self.context.logged_in = True
+        return state
 
     # ------------------------------------------------------------------
     # Timeline helpers
     # ------------------------------------------------------------------
     def scroll_feed(self) -> ActionResult:
-        return timeline.scroll(self.driver, self.context)
+        self._require_persisted_profile()
+        result = timeline.scroll(self.driver, self.context)
+        timeline.refresh_feed(self.driver, self.context)
+        return result
 
     def fetch_center_post(self):
+        self._require_persisted_profile()
         return timeline.fetch_post(self.driver)
 
     def like_center_post(self) -> bool:
+        self._require_persisted_profile()
         return timeline.like(self.driver)
 
     def bookmark_center_post(self) -> bool:
+        self._require_persisted_profile()
         return timeline.bookmark(self.driver)
 
     def repost_center_post(self, quote: Optional[str] = None) -> bool:
+        self._require_persisted_profile()
         return timeline.repost(self.driver, quote=quote)
 
     def reply_to_center_post(self, text: str) -> bool:
+        self._require_persisted_profile()
         return timeline.reply(self.driver, text)
+    
+    def quote_center_post(self, text: str) -> bool:
+        self._require_persisted_profile()
+        return timeline.quote(self.driver, text)
+    
+    def comment_on_center_post(self, text: str) -> bool:
+        self._require_persisted_profile()
+        return timeline.comment(self.driver, text)
+
+    def selected_post_summary(self) -> Optional[str]:
+        self._require_persisted_profile()
+        return timeline.describe_center_post(self.driver)
+
+    def make_post(self, text: str) -> bool:
+        self._require_persisted_profile()
+        return timeline.create_post(self.driver, text)
 
     def open_center_author(self) -> bool:
+        self._require_persisted_profile()
         return timeline.open_author_profile(self.driver)
 
     def follow_current_profile(self) -> bool:
+        self._require_persisted_profile()
         return timeline.follow(self.driver)
 
     def unfollow_current_profile(self) -> bool:
+        self._require_persisted_profile()
         return timeline.unfollow(self.driver)

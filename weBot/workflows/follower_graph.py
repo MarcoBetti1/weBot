@@ -2,12 +2,15 @@
 from __future__ import annotations
 
 import collections
+import logging
 from dataclasses import dataclass
-from typing import Dict, Iterable, Set, Tuple
+from typing import Dict, Set, Tuple
 
 from ..bot import BotController
 from ..core.actions import navigation, social
-from ..core.state import PageState
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -17,9 +20,15 @@ class FollowerGraphResult:
 
 
 def collect_followers(bot: BotController, handle: str, *, max_count: int | None = None) -> Tuple[list[str], bool]:
-    navigation.navigate_to(bot.driver, bot.context, f"https://twitter.com/{handle}/followers")
-    followers, fully_explored = social.collect_handles_from_modal(bot.driver, max_count=max_count)
-    return followers, fully_explored
+    try:
+        navigation.navigate_to(bot.driver, bot.context, f"https://twitter.com/{handle}/followers")
+        followers, fully_explored = social.collect_handles_from_modal(bot.driver, max_count=max_count)
+        if not followers:
+            logger.info("No followers collected for handle '%s'.", handle)
+        return followers, fully_explored
+    except Exception as exc:  # pragma: no cover - Selenium variability
+        logger.error("Failed to collect followers for '%s': %s", handle, exc)
+        return [], False
 
 
 def build_follower_graph(
@@ -42,7 +51,21 @@ def build_follower_graph(
         if depth >= max_layers:
             continue
 
-        followers, _ = collect_followers(bot, current, max_count=max_per_user)
+        followers, fully_explored = collect_followers(bot, current, max_count=max_per_user)
+        if not followers:
+            logger.info(
+                "Skipping expansion for '%s' at depth %s (no followers or collection failed).",
+                current,
+                depth,
+            )
+            continue
+        if not fully_explored:
+            logger.warning(
+                "Follower list for '%s' may be truncated (depth %s, max_per_user=%s).",
+                current,
+                depth,
+                max_per_user,
+            )
         for follower in followers:
             graph.setdefault(follower, set()).add(current)
             if follower not in visited:

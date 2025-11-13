@@ -47,10 +47,11 @@ def choose_actions(bot, post: dict, tracker: InteractionTracker) -> List[str]:
         if random.random() < 0.3:
             actions.append("like")
     elif 55 <= score < 90:
-        actions.extend(random.sample(["like", "bookmark", "reply"], k=random.choice([1, 2])))
+        actions.extend(random.sample(["like", "bookmark", "comment"], k=random.choice([1, 2])))
     else:
-        count = random.randint(2, 4)
-        actions.extend(random.sample(["like", "bookmark", "reply", "repost"], k=count))
+        candidates = ["like", "bookmark", "comment", "repost", "quote"]
+        count = min(random.randint(2, 4), len(candidates))
+        actions.extend(random.sample(candidates, k=count))
 
     tracker.add(bool(actions))
     return actions
@@ -62,7 +63,9 @@ def execute_actions(bot, actions: Iterable[str]) -> None:
             timeline.like(bot.driver)
         elif name == "bookmark":
             timeline.bookmark(bot.driver)
-        elif name == "reply":
-            timeline.reply(bot.driver, "Thanks for sharing this!")
+        elif name in {"reply", "comment"}:
+            timeline.comment(bot.driver, "Thanks for sharing this!")
         elif name == "repost":
             timeline.repost(bot.driver)
+        elif name == "quote":
+            timeline.quote(bot.driver, "Worth a share!")

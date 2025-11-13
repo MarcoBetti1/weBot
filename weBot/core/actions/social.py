@@ -1,15 +1,19 @@
 """Profile and social graph actions."""
 from __future__ import annotations
 
+import logging
 from typing import List, Optional, Tuple
 
-from selenium.common.exceptions import NoSuchElementException
+from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.support import expected_conditions as EC
 
 from ..state import ActionResult, PageState
 from .utils import random_delay, wait_for
+
+
+logger = logging.getLogger(__name__)
 
 
 FOLLOWER_MODAL_SELECTOR = "div[data-testid='sheetDialog']"
@@ -43,7 +47,11 @@ def collect_handles_from_modal(
     max_count: Optional[int] = None,
     scroll_pause: Tuple[float, float] = (0.9, 1.6),
 ) -> Tuple[List[str], bool]:
-    wait_for(driver, EC.presence_of_element_located((By.CSS_SELECTOR, USER_CELL_SELECTOR)), timeout=10)
+    try:
+        wait_for(driver, EC.presence_of_element_located((By.CSS_SELECTOR, USER_CELL_SELECTOR)), timeout=10)
+    except TimeoutException:
+        logger.info("Follower modal did not populate; returning empty handle list.")
+        return [], True
     seen_handles: List[str] = []
     unique = set()
     fully_explored = False
@@ -67,7 +75,11 @@ def collect_handles_from_modal(
                 continue
 
         previous_count = len(unique)
-        driver.execute_script("document.documentElement.scrollTop += 600;")
+        try:
+            driver.execute_script("document.documentElement.scrollTop += 600;")
+        except Exception as exc:  # pragma: no cover - JS execution depends on driver state
+            logger.warning("Scrolling followers modal failed: %s", exc)
+            break
         random_delay(*scroll_pause)
         if len(unique) == previous_count:
             fully_explored = True

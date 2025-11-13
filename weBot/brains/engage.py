@@ -17,6 +17,7 @@ def process_feed(bot, *, posts: int = 10, tracker: Optional[InteractionTracker] 
             actions = choose_actions(bot, post, tracker)
             execute_actions(bot, actions)
         result: ActionResult = timeline.scroll(bot.driver, bot.context)
+        timeline.refresh_feed(bot.driver, bot.context)
         if not result.success:
             break
         time.sleep(0.5)

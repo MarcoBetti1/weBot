@@ -1,4 +1,4 @@
-"""Configuration helpers for credentials and runtime settings."""
+"""Configuration helpers for runtime settings."""
 from __future__ import annotations
 
 import os
@@ -10,26 +10,25 @@ from dotenv import load_dotenv
 
 
 @dataclass
-class Credentials:
-    username: Optional[str]
-    password: str
-    email: Optional[str] = None
-    phone: Optional[str] = None
+class RuntimeSettings:
+    """Optional environment-driven configuration."""
+
+    profile_path: Optional[Path] = None
 
 
-def load_credentials(env_file: Optional[Path] = None) -> Credentials:
+def load_runtime_settings(env_file: Optional[Path] = None) -> RuntimeSettings:
+    """Load optional settings, including a persisted Chrome profile path.
+
+    The function looks for ``WEBOT_PROFILE_PATH`` in the active environment and
+    returns it (if present) as a ``pathlib.Path``. Supplying an ``env_file``
+    mirrors the previous behaviour of loading variables from a ``.env`` file.
+    """
+
     if env_file:
         load_dotenv(env_file)
     else:
         load_dotenv()
-    username = os.getenv("WEBOT_USERNAME") or None
-    password = os.getenv("WEBOT_PASSWORD")
-    email = os.getenv("WEBOT_EMAIL") or None
-    phone = os.getenv("WEBOT_PHONE") or None
 
-    if not password:
-        raise RuntimeError("WEBOT_PASSWORD must be set in environment or .env file")
-    if not any([username, email, phone]):
-        raise RuntimeError("At least one of WEBOT_USERNAME, WEBOT_EMAIL, or WEBOT_PHONE must be provided")
-
-    return Credentials(username=username, password=password, email=email, phone=phone)
+    profile_value = os.getenv("WEBOT_PROFILE_PATH")
+    profile_path = Path(profile_value).expanduser() if profile_value else None
+    return RuntimeSettings(profile_path=profile_path)

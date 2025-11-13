@@ -3,21 +3,26 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
+import shlex
 import sys
+from datetime import datetime
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Dict, Iterable, Set
+SESSION_LOGGER_NAME = "webot.session"
+
 
 from weBot.bot import BotController
 from weBot.brains.engage import process_feed
-from weBot.config.settings import load_credentials
+from weBot.core.state import PageState
 from weBot.data.graph_io import export_edges_to_csv
 from weBot.data.storage import save_json
 from weBot.workflows import follower_graph as follower_workflow
 from weBot.workflows.profile import fetch_profile
 
 
-COMMAND_CHOICES = ("login", "engage", "follower-graph", "profile")
+COMMAND_CHOICES = ("login", "engage", "follower-graph", "profile", "session")
 
 
 def _load_config_file(path: Path) -> Dict[str, Any]:
@@ -69,9 +74,7 @@ def _collect_cli_overrides(argv: Iterable[str]) -> Set[str]:
 PATH_KEYS = {
     "chrome_profile",
     "profiles_root",
-    "cookies",
     "output",
-    "env_file",
 }
 
 
@@ -104,10 +107,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Automation toolkit for Twitter/X interactions")
     parser.add_argument("command", nargs="?", choices=COMMAND_CHOICES, help="Task to run")
     parser.add_argument("--config", dest="config_file", help="Path to YAML or JSON config with CLI options")
-    parser.add_argument("--env", dest="env_file", default=None, help="Path to .env file with credentials")
-    parser.add_argument("--cookies", dest="cookies", default="cookies.json", help="Location for persisted cookies")
     parser.add_argument("--headless", action="store_true", help="Run the browser in headless mode")
-    parser.add_argument("--no-cookies", action="store_true", help="Skip attempting cookie-based login")
     parser.add_argument("--posts", type=int, default=10, help="Number of timeline posts to process (for engage)")
     parser.add_argument("--handle", help="Target handle for follower graph or profile commands")
     parser.add_argument("--layers", type=int, default=3, help="Depth for follower graph BFS")
@@ -115,28 +115,9 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output", help="Optional file output (JSON or CSV depending on command)")
     parser.add_argument("--descriptive", action="store_true", help="Include follower/following lists when fetching profile data")
     parser.add_argument(
-        "--login-order",
-        dest="login_order",
-        default=None,
-        help="Comma-separated priority of identifiers to try (any combination of username,email,phone)",
-    )
-    parser.add_argument(
-        "--login-method",
-        dest="login_method",
-        default="auto",
-        choices=["auto", "credentials", "google", "apple", "manual"],
-        help="Select the login method: credentials, Google, Apple, or manual",
-    )
-    parser.add_argument(
         "--chrome-profile",
         dest="chrome_profile",
         help="Path to a Chrome user data directory to reuse between runs",
-    )
-    parser.add_argument(
-        "--no-ephemeral-profile",
-        dest="no_ephemeral_profile",
-        action="store_true",
-        help="Disable creation of a fresh temporary Chrome profile for this run",
     )
     parser.add_argument(
         "--fresh-profile",
@@ -161,13 +142,345 @@ def _build_parser() -> argparse.ArgumentParser:
         default=600.0,
         help="Seconds to wait for manual login before aborting (0 or negative for unlimited)",
     )
-    parser.add_argument(
-        "--preserve-profile",
-        dest="preserve_profile",
-        action="store_true",
-        help="Keep the Chrome profile directory after a successful login for reuse",
-    )
     return parser
+
+
+def _ensure_authenticated(bot: BotController) -> None:
+    if not bot.profile_is_persistent:
+        raise RuntimeError(
+            "A saved Chrome profile is required. Run the login command first and reuse the persisted profile."
+        )
+
+    state = bot.ensure_home()
+    if state != PageState.HOME_TIMELINE:
+        raise RuntimeError(
+            "The active Chrome profile is not authenticated. Complete manual login and try again."
+        )
+
+
+def _execute_workflow(bot: BotController, command: str, options: argparse.Namespace) -> None:
+    _ensure_authenticated(bot)
+
+    if command == "engage":
+        posts = getattr(options, "posts", 10)
+        process_feed(bot, posts=posts)
+        print(f"Engaged with {posts} timeline posts.")
+        return
+
+    if command == "follower-graph":
+        handle = options.handle
+        result = follower_workflow.build_follower_graph(
+            bot,
+            handle,
+            max_layers=options.layers,
+            max_per_user=options.max_per_user,
+        )
+        output = options.output or "follower_graph.csv"
+        export_edges_to_csv(result.edges, filename=output)
+        print(f"Follower graph exported to {output}")
+        return
+
+    if command == "profile":
+        profile = fetch_profile(bot, options.handle, descriptive=options.descriptive)
+        profile_data = asdict(profile)
+        if options.output:
+            output_path = Path(options.output)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(json.dumps(profile_data, ensure_ascii=False, indent=2), encoding="utf-8")
+            print(f"Profile saved to {output_path}")
+        else:
+            path = save_json(options.handle, profile_data)
+            print(f"Profile saved to {path}")
+        return
+
+    raise ValueError(f"Unsupported workflow command: {command}")
+
+
+def _parse_session_command(
+    line: str,
+    *,
+    default_manual_timeout: float | None,
+) -> tuple[str | None, argparse.Namespace | None]:
+    tokens = shlex.split(line)
+    if not tokens:
+        return None, None
+
+    command = tokens[0].lower()
+    args = tokens[1:]
+
+    def build_parser(prog: str) -> argparse.ArgumentParser:
+        return argparse.ArgumentParser(prog=prog)
+
+    try:
+        if command == "login":
+            parser = build_parser("login")
+            parser.add_argument("--manual-timeout", type=float, default=default_manual_timeout)
+            parser.add_argument("--no-persist-profile", action="store_true")
+            return command, parser.parse_args(args)
+
+        if command == "engage":
+            parser = build_parser("engage")
+            parser.add_argument("--posts", type=int, default=10)
+            return command, parser.parse_args(args)
+
+        if command == "profile":
+            parser = build_parser("profile")
+            parser.add_argument("--handle", required=True)
+            parser.add_argument("--output")
+            parser.add_argument("--descriptive", action="store_true")
+            return command, parser.parse_args(args)
+
+        if command == "follower-graph":
+            parser = build_parser("follower-graph")
+            parser.add_argument("--handle", required=True)
+            parser.add_argument("--layers", type=int, default=3)
+            parser.add_argument("--max-per-user", type=int, default=40)
+            parser.add_argument("--output")
+            return command, parser.parse_args(args)
+
+        if command == "navigate":
+            parser = build_parser("navigate")
+            parser.add_argument("url")
+            return command, parser.parse_args(args)
+
+        if command == "home":
+            parser = build_parser("home")
+            return command, parser.parse_args(args)
+
+        if command == "like":
+            parser = build_parser("like")
+            return command, parser.parse_args(args)
+
+        if command == "repost":
+            parser = build_parser("repost")
+            parser.add_argument("--quote")
+            return command, parser.parse_args(args)
+
+        if command == "quote":
+            parser = build_parser("quote")
+            parser.add_argument("--text", required=True)
+            return command, parser.parse_args(args)
+
+        if command == "comment":
+            parser = build_parser("comment")
+            parser.add_argument("--text", required=True)
+            return command, parser.parse_args(args)
+
+        if command == "makepost":
+            parser = build_parser("makepost")
+            parser.add_argument("--text", required=True)
+            return command, parser.parse_args(args)
+
+        if command in {"go-home", "status", "help", "exit", "quit"}:
+            return command, argparse.Namespace()
+
+        print("Unknown command. Type 'help' for available commands.")
+        return None, None
+    except SystemExit:
+        # argparse already printed the error/help message
+        return None, None
+
+
+def _print_session_help() -> None:
+    print(
+        "Available commands:\n"
+        "  login [--manual-timeout SECONDS] [--no-persist-profile]\n"
+        "  engage [--posts N]\n"
+        "  profile --handle NAME [--output PATH] [--descriptive]\n"
+        "  follower-graph --handle NAME [--layers N] [--max-per-user N] [--output PATH]\n"
+        "  navigate URL\n"
+        "  home\n"
+        "  like\n"
+        "  repost [--quote TEXT]\n"
+        "  quote --text TEXT\n"
+        "  comment --text TEXT\n"
+        "  makepost --text TEXT\n"
+        "  go-home\n"
+        "  status\n"
+        "  help\n"
+        "  exit | quit"
+    )
+
+
+def _run_session(bot: BotController, *, default_manual_timeout: float | None) -> None:
+    log_path = _init_session_logger()
+    logger = logging.getLogger(SESSION_LOGGER_NAME)
+    print("Interactive session started. Type 'help' to list available commands.")
+    print(f"Session log: {log_path}")
+    try:
+        _session_loop(bot, logger, default_manual_timeout)
+    finally:
+        _teardown_session_logger()
+
+
+def _session_loop(bot: BotController, logger: logging.Logger, default_manual_timeout: float | None) -> None:
+    while True:
+        try:
+            line = input("webot> ").strip()
+        except EOFError:
+            print()
+            break
+        except KeyboardInterrupt:  # pragma: no cover - interactive convenience
+            print()
+            continue
+
+        if not line:
+            continue
+
+        command, options = _parse_session_command(line, default_manual_timeout=default_manual_timeout)
+        if command is None:
+            continue
+
+        logger.info("Command received: %s %s", command, vars(options) if options else {})
+
+        if command in {"exit", "quit"}:
+            break
+
+        if command == "help":
+            _print_session_help()
+            continue
+
+        try:
+            if command == "login":
+                manual_timeout = options.manual_timeout
+                if manual_timeout is not None and manual_timeout < 0:
+                    manual_timeout = None
+                state = bot.manual_login(
+                    manual_timeout=manual_timeout,
+                    persist_profile=not getattr(options, "no_persist_profile", False),
+                )
+                print(f"Manual login completed with state: {state.name}")
+                logger.info("Manual login completed: state=%s", state.name)
+                continue
+
+            if command == "engage":
+                _execute_workflow(bot, "engage", options)
+                logger.info("Engage workflow finished (posts=%s).", getattr(options, "posts", 10))
+                continue
+
+            if command == "profile":
+                _execute_workflow(bot, "profile", options)
+                logger.info("Profile workflow finished for handle=%s.", options.handle)
+                continue
+
+            if command == "follower-graph":
+                _execute_workflow(bot, "follower-graph", options)
+                logger.info(
+                    "Follower graph workflow finished for handle=%s layers=%s max_per_user=%s.",
+                    options.handle,
+                    options.layers,
+                    options.max_per_user,
+                )
+                continue
+
+            if command == "go-home":
+                state = bot.go_home()
+                print(f"Current state: {state.name}")
+                logger.info("Go home executed; state=%s", state.name)
+                continue
+
+            if command == "navigate":
+                result = bot.navigate(options.url)
+                state = result.next_state or bot.context.current_state
+                print(f"Navigated to {options.url} (state: {state.name})")
+                logger.info("Navigate executed; url=%s state=%s", options.url, state.name)
+                continue
+
+            if command == "home":
+                _ensure_authenticated(bot)
+                state = bot.go_home()
+                summary = bot.selected_post_summary()
+                if summary:
+                    print(f"At top of home timeline. Selected post: {summary}")
+                else:
+                    print("At top of home timeline.")
+                logger.info("Home command executed; state=%s", state.name)
+                continue
+
+            if command == "like":
+                _ensure_authenticated(bot)
+                summary = bot.selected_post_summary()
+                if summary:
+                    print(f"Selected post: {summary}")
+                success = bot.like_center_post()
+                print("Like successful" if success else "Like failed")
+                logger.info("Like command completed; success=%s", success)
+                continue
+
+            if command == "repost":
+                _ensure_authenticated(bot)
+                summary = bot.selected_post_summary()
+                if summary:
+                    print(f"Selected post: {summary}")
+                success = bot.repost_center_post(quote=getattr(options, "quote", None))
+                print("Repost successful" if success else "Repost failed")
+                logger.info("Repost command completed; success=%s quote=%s", success, getattr(options, "quote", None))
+                continue
+
+            if command == "quote":
+                _ensure_authenticated(bot)
+                summary = bot.selected_post_summary()
+                if summary:
+                    print(f"Selected post: {summary}")
+                success = bot.quote_center_post(options.text)
+                print("Quote successful" if success else "Quote failed")
+                logger.info("Quote command completed; success=%s", success)
+                continue
+
+            if command == "comment":
+                _ensure_authenticated(bot)
+                summary = bot.selected_post_summary()
+                if summary:
+                    print(f"Selected post: {summary}")
+                success = bot.comment_on_center_post(options.text)
+                print("Comment successful" if success else "Comment failed")
+                logger.info("Comment command completed; success=%s", success)
+                continue
+
+            if command == "makepost":
+                _ensure_authenticated(bot)
+                success = bot.make_post(options.text)
+                print("Post published" if success else "Failed to publish post")
+                logger.info("MakePost command completed; success=%s", success)
+                continue
+
+            if command == "status":
+                state = bot.context.current_state
+                print(f"State: {state.name}")
+                print(f"Logged in: {bot.context.logged_in}")
+                print(f"Profile path: {bot.profile_path or 'None'} (persistent={bot.profile_is_persistent})")
+                logger.info("Status queried; state=%s logged_in=%s", state.name, bot.context.logged_in)
+                continue
+
+            print("Unknown command. Type 'help' for available commands.")
+        except Exception as exc:  # pragma: no cover - interactive loop
+            print(f"[error] {exc}")
+            logger.exception("Command '%s' failed", command)
+
+
+def _init_session_logger() -> Path:
+    log_dir = Path("logs")
+    log_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+    log_path = log_dir / f"session-{timestamp}.log"
+
+    logger = logging.getLogger(SESSION_LOGGER_NAME)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+
+    handler = logging.FileHandler(log_path, encoding="utf-8")
+    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
+    return log_path
+
+
+def _teardown_session_logger() -> None:
+    logger = logging.getLogger(SESSION_LOGGER_NAME)
+    for handler in list(logger.handlers):
+        handler.close()
+        logger.removeHandler(handler)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -190,6 +503,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command in {"follower-graph", "profile"} and not args.handle:
         parser.error("--handle is required for follower-graph and profile commands")
 
+    if args.command not in {"login", "session"} and not args.chrome_profile:
+        parser.error("--chrome-profile is required for this command. Run the login command first to create one.")
+
     if args.chrome_profile and args.fresh_profile:
         parser.error("--fresh-profile cannot be combined with --chrome-profile")
 
@@ -198,13 +514,11 @@ def main(argv: list[str] | None = None) -> int:
     else:
         manual_timeout = args.manual_timeout
 
-    credentials = load_credentials(Path(args.env_file) if args.env_file else None)
-
     from weBot.core.driver import DriverConfig
 
     user_data_dir = Path(args.chrome_profile).expanduser() if args.chrome_profile else None
     profiles_root = Path(args.profiles_root).expanduser() if args.profiles_root else None
-    use_ephemeral_profile = not args.no_ephemeral_profile and not args.fresh_profile and user_data_dir is None
+    use_ephemeral_profile = user_data_dir is None and not args.fresh_profile
     driver_config = DriverConfig(
         headless=args.headless,
         user_data_dir=user_data_dir,
@@ -213,81 +527,31 @@ def main(argv: list[str] | None = None) -> int:
         profile_root=profiles_root,
         user_agent=args.user_agent,
     )
-    identifier_priority = None
-    if args.login_order:
-        allowed_tokens = {"username", "email", "phone"}
-        raw_tokens = [part.strip().lower() for part in args.login_order.split(",") if part.strip()]
-        invalid = [token for token in raw_tokens if token not in allowed_tokens]
-        if invalid:
-            parser.error(f"Unsupported login identifiers in --login-order: {', '.join(invalid)}")
-        identifier_priority = raw_tokens or None
-
-    bot = BotController(
-        username=credentials.username,
-        password=credentials.password,
-        email=credentials.email,
-        phone=credentials.phone,
-        identifier_priority=identifier_priority,
-        driver_config=driver_config,
-        cookies_path=Path(args.cookies),
-    )
+    bot = BotController(driver_config=driver_config)
 
     bot.start()
 
-    if bot.profile_path:
+    if bot.profile_path and (args.fresh_profile or args.chrome_profile):
         label = "Fresh Chrome profile" if args.fresh_profile and not args.chrome_profile else "Chrome profile"
         print(f"{label}: {bot.profile_path}")
 
     try:
-        prefer_cookies = not args.no_cookies
-        login_method = args.login_method or "auto"
-        preserve_profile_flag = args.preserve_profile or (login_method == "manual")
-        if login_method == "credentials":
-            login_method = "auto"
-        final_state = bot.login(
-            prefer_cookies=prefer_cookies,
-            method=login_method,
-            manual_timeout=manual_timeout,
-            preserve_profile=preserve_profile_flag,
-        )
-        if final_state != bot.context.current_state:
-            bot.context.update_state(final_state)
-
         if args.command == "login":
-            print(f"Login completed with state: {final_state.name}")
+            final_state = bot.manual_login(manual_timeout=manual_timeout, persist_profile=True)
+            if final_state != bot.context.current_state:
+                bot.context.update_state(final_state)
+            print(f"Manual login completed with state: {final_state.name}")
             return 0
 
-        if args.command == "engage":
-            bot.ensure_home()
-            process_feed(bot, posts=args.posts)
+        if args.command == "session":
+            _run_session(bot, default_manual_timeout=manual_timeout)
             return 0
 
-        if args.command == "follower-graph":
-            result = follower_workflow.build_follower_graph(
-                bot,
-                args.handle,
-                max_layers=args.layers,
-                max_per_user=args.max_per_user,
-            )
-            output = args.output or "follower_graph.csv"
-            export_edges_to_csv(result.edges, filename=output)
-            print(f"Follower graph exported to {output}")
+        try:
+            _execute_workflow(bot, args.command, args)
             return 0
-
-        if args.command == "profile":
-            profile = fetch_profile(bot, args.handle, descriptive=args.descriptive)
-            profile_data = asdict(profile)
-            if args.output:
-                output_path = Path(args.output)
-                output_path.parent.mkdir(parents=True, exist_ok=True)
-                output_path.write_text(json.dumps(profile_data, ensure_ascii=False, indent=2), encoding="utf-8")
-                print(f"Profile saved to {output_path}")
-            else:
-                path = save_json(args.handle, profile_data)
-                print(f"Profile saved to {path}")
-            return 0
-
-        parser.error(f"Unknown command {args.command}")
+        except ValueError as exc:
+            parser.error(str(exc))
     finally:
         bot.stop()
 

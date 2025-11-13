@@ -48,6 +48,10 @@ class DriverManager:
     def profile_path(self) -> Optional[Path]:
         return self._profile_path
 
+    @property
+    def profile_is_persistent(self) -> bool:
+        return self._profile_path is not None and not self._cleanup_profile
+
     def create(self) -> webdriver.Chrome:
         if self._driver:
             return self._driver
@@ -73,6 +77,12 @@ class DriverManager:
             "--disable-notifications",
             "--disable-infobars",
             "--disable-popup-blocking",
+            "--disable-background-networking",
+            "--disable-sync",
+            "--disable-push-messaging",
+            "--disable-gcm-checkin",
+            "--disable-gcm-registration",
+            "--log-level=3",
         ):
             options.add_argument(flag)
 
