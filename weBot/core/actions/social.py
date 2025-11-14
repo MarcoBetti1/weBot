@@ -70,7 +70,7 @@ def collect_handles_from_modal(
                     unique.add(handle)
                     seen_handles.append(handle)
                     if max_count and len(seen_handles) >= max_count:
-                        return seen_handles, True
+                        return seen_handles, False
             except NoSuchElementException:
                 continue
 

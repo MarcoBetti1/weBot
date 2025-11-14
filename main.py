@@ -16,7 +16,7 @@ SESSION_LOGGER_NAME = "webot.session"
 from weBot.bot import BotController
 from weBot.brains.engage import process_feed
 from weBot.core.state import PageState
-from weBot.data.graph_io import export_edges_to_csv
+from weBot.data.graph_io import export_edges_to_csv, export_follower_graph_json
 from weBot.data.storage import save_json
 from weBot.workflows import follower_graph as follower_workflow
 from weBot.workflows.profile import fetch_profile
@@ -127,6 +127,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--layers", type=int, default=3, help="Depth for follower graph BFS")
     parser.add_argument("--max-per-user", type=int, default=40, help="Follower cap per user when crawling")
     parser.add_argument("--output", help="Optional file output (JSON or CSV depending on command)")
+    parser.add_argument("--output-json", dest="output_json", help="Path for follower graph JSON output")
     parser.add_argument("--descriptive", action="store_true", help="Include follower/following lists when fetching profile data")
     parser.add_argument(
         "--chrome-profile",
@@ -199,9 +200,36 @@ def _execute_workflow(bot: BotController, command: str, options: argparse.Namesp
             max_layers=options.layers,
             max_per_user=options.max_per_user,
         )
-        output = options.output or "follower_graph.csv"
-        export_edges_to_csv(result.edges, filename=output)
-        print(f"Follower graph exported to {output}")
+        output_csv = getattr(options, "output", None)
+        if output_csv:
+            output_csv_path = Path(output_csv)
+            csv_dir = output_csv_path.parent if output_csv_path.parent != Path(".") else None
+            csv_path = export_edges_to_csv(
+                result.edges,
+                filename=output_csv_path.name,
+                directory=csv_dir,
+            )
+        else:
+            csv_path = export_edges_to_csv(result.edges, filename="follower_graph.csv")
+
+        json_override = getattr(options, "output_json", None)
+        if json_override:
+            json_path_candidate = Path(json_override)
+        else:
+            if output_csv:
+                json_path_candidate = Path(output_csv).with_suffix(".json")
+            else:
+                json_path_candidate = Path("follower_graph.json")
+
+        json_dir = json_path_candidate.parent if json_path_candidate.parent != Path(".") else None
+        json_path = export_follower_graph_json(
+            result,
+            filename=json_path_candidate.name,
+            directory=json_dir,
+        )
+
+        print(f"Follower graph edges saved to {csv_path}")
+        print(f"Follower graph summary saved to {json_path}")
         return
 
     if command == "profile":
@@ -261,6 +289,7 @@ def _parse_session_command(
             parser.add_argument("--layers", type=int, default=3)
             parser.add_argument("--max-per-user", type=int, default=40)
             parser.add_argument("--output")
+            parser.add_argument("--output-json")
             return command, parser.parse_args(args)
 
         if command == "navigate":
@@ -332,7 +361,7 @@ def _print_session_help() -> None:
         "  login [--manual-timeout SECONDS] [--no-persist-profile]\n"
         "  engage [--posts N]\n"
         "  profile --handle NAME [--output PATH] [--descriptive]\n"
-        "  follower-graph --handle NAME [--layers N] [--max-per-user N] [--output PATH]\n"
+    "  follower-graph --handle NAME [--layers N] [--max-per-user N] [--output PATH] [--output-json PATH]\n"
         "  navigate URL\n"
         "  home\n"
         "  like\n"

@@ -175,6 +175,6 @@ extraction). Review these files when extending or testing specific routines.
 ## Next steps
 
 - Improve profile health checks (detect lockouts, expired sessions).
-- Keep iterating on human-like delays to dodge bot protection.
-- Surface saved-profile health checks (locked, stale, or missing cookies).
 - session exit is very slow.
+- add Useful loop
+- follower graph does not work well. Timeout or error loading.
