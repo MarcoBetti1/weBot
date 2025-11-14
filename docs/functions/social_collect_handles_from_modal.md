@@ -20,5 +20,5 @@
 - Uses the module logger (`logging.getLogger(__name__)`) so the session log captures collection anomalies.
 
 ## Usage Notes
-- Designed to be invoked by high-level workflows (e.g., `follower_graph.collect_followers`).
-- Returns unique handles preserving discovery order, suitable for deterministic BFS traversals.
+- Designed to be invoked by workflows that gather follower or following lists after navigation to the modal.
+- Returns unique handles while preserving discovery order so downstream code can replay interactions deterministically.

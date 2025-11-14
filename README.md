@@ -4,7 +4,7 @@ This repository hosts an experimental Selenium automation harness for Twitter/X.
 The 2025 refresh focuses on observability and deterministic workflows so the
 bot always knows which page state it is operating in. The codebase ships with a
 state-driven action layer, testable “brains”, and high-level workflows for
-timeline engagement, profile scraping, and follower graph crawling. **Automated
+timeline engagement and profile scraping. **Automated
 credential login has been removed**—you must sign in manually once, save the
 Chrome profile, and reuse that profile for every subsequent workflow.
 
@@ -17,7 +17,7 @@ experiment with.**
 ```
 weBot/
         core/          # Driver factory, state models, page recognisers, Selenium actions
-        workflows/     # Manual-first workflows (profile fetch, follower graph, etc.)
+    workflows/     # Manual-first workflows (profile fetch, etc.)
         brains/        # Decision-making logic (scoring, interaction policy)
         data/          # Extractors and persistence helpers
         config/        # Optional environment helpers
@@ -59,9 +59,8 @@ Legacy modules such as `scripts/` and `weBot/util.py` intentionally raise
 4. **Reuse the saved profile for automation.**
 
         ```bash
-        python -m main engage --chrome-profile profile1 --posts 5
-        python -m main follower-graph --chrome-profile profile1 --handle jack --layers 2
-        python -m main profile --chrome-profile profile1 --handle jack --descriptive
+    python -m main engage --chrome-profile profile1 --posts 5
+    python -m main profile --chrome-profile profile1 --handle jack --descriptive
         ```
 
         All non-login commands require `--chrome-profile` (or a config file that
@@ -79,7 +78,7 @@ python -m main session --chrome-profile profile1
 ```
 
 The program opens the browser, then presents a `webot>` prompt. Available
-commands include `login`, `engage`, `profile`, `follower-graph`, `home`,
+commands include `login`, `engage`, `profile`, `home`,
 `like`, `repost`, `quote`, `comment`, `makepost`, `go-home`, `navigate`,
 `status`, and `exit`. Run
 `help` inside the prompt for full usage.
@@ -156,8 +155,8 @@ breakdown of every supported field and named range.
 
 Detailed Markdown notes live under `docs/functions/`, covering the behaviour,
 inputs, outputs, and failure modes of the key functions (`BotController`
-helpers, session orchestration, follower graph traversal, and social data
-extraction). Review these files when extending or testing specific routines.
+helpers, session orchestration, and social data extraction). Review these files
+when extending or testing specific routines.
 
 ## Troubleshooting
 

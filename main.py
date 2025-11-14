@@ -16,15 +16,13 @@ SESSION_LOGGER_NAME = "webot.session"
 from weBot.bot import BotController
 from weBot.brains.engage import process_feed
 from weBot.core.state import PageState
-from weBot.data.graph_io import export_edges_to_csv
 from weBot.data.storage import save_json
-from weBot.workflows import follower_graph as follower_workflow
 from weBot.workflows.profile import fetch_profile
 from weBot.config.behaviour import load_behaviour_settings, set_behaviour_settings
 from weBot.core.driver import DriverConfig, validate_profile_name
 
 
-COMMAND_CHOICES = ("login", "engage", "follower-graph", "profile", "session")
+COMMAND_CHOICES = ("login", "engage", "profile", "session")
 
 
 def _load_config_file(path: Path) -> Dict[str, Any]:
@@ -123,9 +121,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--config", dest="config_file", help="Path to YAML or JSON config with CLI options")
     parser.add_argument("--headless", action="store_true", help="Run the browser in headless mode")
     parser.add_argument("--posts", type=int, default=10, help="Number of timeline posts to process (for engage)")
-    parser.add_argument("--handle", help="Target handle for follower graph or profile commands")
-    parser.add_argument("--layers", type=int, default=3, help="Depth for follower graph BFS")
-    parser.add_argument("--max-per-user", type=int, default=40, help="Follower cap per user when crawling")
+    parser.add_argument("--handle", help="Target handle for profile commands")
     parser.add_argument("--output", help="Optional file output (JSON or CSV depending on command)")
     parser.add_argument("--descriptive", action="store_true", help="Include follower/following lists when fetching profile data")
     parser.add_argument(
@@ -191,19 +187,6 @@ def _execute_workflow(bot: BotController, command: str, options: argparse.Namesp
         print(f"Engaged with {posts} timeline posts.")
         return
 
-    if command == "follower-graph":
-        handle = options.handle
-        result = follower_workflow.build_follower_graph(
-            bot,
-            handle,
-            max_layers=options.layers,
-            max_per_user=options.max_per_user,
-        )
-        output = options.output or "follower_graph.csv"
-        export_edges_to_csv(result.edges, filename=output)
-        print(f"Follower graph exported to {output}")
-        return
-
     if command == "profile":
         profile = fetch_profile(bot, options.handle, descriptive=options.descriptive)
         profile_data = asdict(profile)
@@ -253,14 +236,6 @@ def _parse_session_command(
             parser.add_argument("--handle", required=True)
             parser.add_argument("--output")
             parser.add_argument("--descriptive", action="store_true")
-            return command, parser.parse_args(args)
-
-        if command == "follower-graph":
-            parser = build_parser("follower-graph")
-            parser.add_argument("--handle", required=True)
-            parser.add_argument("--layers", type=int, default=3)
-            parser.add_argument("--max-per-user", type=int, default=40)
-            parser.add_argument("--output")
             return command, parser.parse_args(args)
 
         if command == "navigate":
@@ -331,8 +306,7 @@ def _print_session_help() -> None:
         "Available commands:\n"
         "  login [--manual-timeout SECONDS] [--no-persist-profile]\n"
         "  engage [--posts N]\n"
-        "  profile --handle NAME [--output PATH] [--descriptive]\n"
-        "  follower-graph --handle NAME [--layers N] [--max-per-user N] [--output PATH]\n"
+    "  profile --handle NAME [--output PATH] [--descriptive]\n"
         "  navigate URL\n"
         "  home\n"
         "  like\n"
@@ -491,16 +465,6 @@ def _session_loop(bot: BotController, logger: logging.Logger, default_manual_tim
                 logger.info("Profile workflow finished for handle=%s.", options.handle)
                 continue
 
-            if command == "follower-graph":
-                _execute_workflow(bot, "follower-graph", options)
-                logger.info(
-                    "Follower graph workflow finished for handle=%s layers=%s max_per_user=%s.",
-                    options.handle,
-                    options.layers,
-                    options.max_per_user,
-                )
-                continue
-
             if command == "go-home":
                 state = bot.go_home()
                 print(f"Current state: {state.name}")
@@ -628,8 +592,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.command not in COMMAND_CHOICES:
         parser.error(f"Unknown command {args.command}")
 
-    if args.command in {"follower-graph", "profile"} and not args.handle:
-        parser.error("--handle is required for follower-graph and profile commands")
+    if args.command == "profile" and not args.handle:
+        parser.error("--handle is required for the profile command")
 
     profiles_root = _resolve_profiles_root(getattr(args, "profiles_root", None))
 
